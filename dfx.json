@@ -1,0 +1,20 @@
+{
+  "canisters": {
+    "ic_news_square": {
+      "candid": "src/ic_news_square.did",
+      "package": "ic_news_square",
+      "type": "rust",
+      "http_outcalls": {
+        "urls": ["https://api.day.app"]
+      }
+    }
+  },
+  "defaults": {
+    "build": {
+      "args": "",
+      "packtool": "pnpm"
+    }
+  },
+  "output_env_file": ".env",
+  "version": 1
+}

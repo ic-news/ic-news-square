@@ -1,0 +1,53 @@
+type DailyCheckInResponse = record {
+  bonus_points : nat64;
+  total_points : nat64;
+  next_claim_available_at : nat64;
+  success : bool;
+  points_earned : nat64;
+  consecutive_days : nat64;
+};
+type PointsTransaction = record {
+  reference_id : opt text;
+  timestamp : nat64;
+  amount : int64;
+  reason : text;
+};
+type TaskConfig = record {
+  title : text;
+  description : text;
+  enabled : bool;
+  consecutive_days_bonus_multiplier : nat64;
+  base_points : nat64;
+  max_consecutive_bonus_days : nat64;
+};
+type TaskVerificationRequest = record {
+  task_id : text;
+  user : principal;
+  timestamp : nat64;
+  proof : opt text;
+};
+type TaskVerificationResponse = record {
+  message : text;
+  verification_data : opt VerificationData;
+  success : bool;
+};
+type VerificationData = record {
+  task_id : text;
+  metadata : vec record { text; text };
+  completion_timestamp : nat64;
+  points_earned : nat64;
+};
+service : () -> {
+  add_admin : (principal) -> ();
+  award_points : (principal, nat64, text) -> ();
+  claim_daily_check_in : () -> (DailyCheckInResponse);
+  get_admins : () -> (vec principal) query;
+  get_checkin_status : (principal) -> (vec record { text; text }) query;
+  get_my_checkin_status : () -> (vec record { text; text }) query;
+  get_task_config : () -> (TaskConfig) query;
+  get_user_rewards : (principal) -> (vec PointsTransaction) query;
+  remove_admin : (principal) -> ();
+  reset_user_streak : (principal) -> ();
+  update_task_config : (TaskConfig) -> ();
+  verify_task : (TaskVerificationRequest) -> (TaskVerificationResponse);
+}

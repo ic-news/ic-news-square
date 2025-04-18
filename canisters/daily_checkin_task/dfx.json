@@ -1,0 +1,17 @@
+{
+  "canisters": {
+    "daily_checkin_task": {
+      "candid": "src/daily_checkin_task.did",
+      "package": "daily_checkin_task",
+      "type": "rust"
+    }
+  },
+  "defaults": {
+    "build": {
+      "args": "",
+      "packtool": "pnpm"
+    }
+  },
+  "output_env_file": ".env",
+  "version": 1
+}
