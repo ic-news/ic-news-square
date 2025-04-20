@@ -12,6 +12,28 @@ use crate::storage_main::{UserStatus as StorageUserStatus, UserRole as StorageUs
 use crate::storage::sharded::{SHARDED_USERS, SHARDED_USER_PROFILES, SHARDED_USER_STATS};
 use crate::utils::error_handler::*;
 
+// Helper functions for type conversion
+
+// Convert storage user status to model user status
+fn map_storage_status_to_model(status: StorageUserStatus) -> user::UserStatus {
+    match status {
+        StorageUserStatus::Active => user::UserStatus::Active,
+        StorageUserStatus::Suspended => user::UserStatus::Suspended,
+        StorageUserStatus::Banned => user::UserStatus::Banned,
+        StorageUserStatus::Restricted => user::UserStatus::Restricted,
+    }
+}
+
+// Convert storage user role to model user role
+fn map_storage_role_to_model(role: StorageUserRole) -> user::UserRole {
+    match role {
+        StorageUserRole::User => user::UserRole::User,
+        StorageUserRole::Admin => user::UserRole::Admin,
+        StorageUserRole::Moderator => user::UserRole::Moderator,
+        StorageUserRole::Creator => user::UserRole::Creator,
+    }
+}
+
 // User registration and profile management
 pub fn register_user(request: RegisterUserRequest, caller: Principal) -> SquareResult<()> {
     const MODULE: &str = "services::user";
@@ -36,15 +58,13 @@ pub fn register_user(request: RegisterUserRequest, caller: Principal) -> SquareR
         ));
     }
     
-    // Validate bio length if provided
-    if let Some(bio) = &request.bio {
-        if bio.len() > MAX_BIO_LENGTH {
-            return log_and_return(validation_error(
-                &format!("Bio exceeds maximum length of {} characters", MAX_BIO_LENGTH),
-                MODULE,
-                FUNCTION
-            ));
-        }
+    // Validate bio length
+    if request.bio.len() > MAX_BIO_LENGTH {
+        return log_and_return(validation_error(
+            &format!("Bio exceeds maximum length of {} characters", MAX_BIO_LENGTH),
+            MODULE,
+            FUNCTION
+        ));
     }
     
     STORAGE.with(|storage| {
@@ -236,12 +256,12 @@ pub fn update_user_profile(request: UpdateProfileRequest, caller: Principal) -> 
         
         // Apply bio update
         if let Some(bio) = bio_update {
-            profile.bio = Some(bio);
+            profile.bio = bio;
         }
         
         // Update avatar URL
         if let Some(avatar) = avatar_update {
-            profile.avatar = Some(avatar);
+            profile.avatar = avatar;
         }
         
         // Update handle if provided
@@ -290,11 +310,12 @@ pub fn get_user_profile(principal: Principal) -> SquareResult<UserProfileRespons
             bio: profile.bio.clone(),
             avatar: profile.avatar.clone(),
             social_links: profile.social_links.clone().unwrap_or_default(),
-            interests: Vec::new(), // Add a default empty interest list
             followers_count: profile.followers.len() as u64,
             following_count: profile.followed_users.len() as u64,
-            created_at: user.registered_at, // Use registered_at as created_at
-            updated_at: user.last_login, // Use last_login as updated_at
+            registered_at: user.registered_at,
+            last_login: user.last_login,
+            status: map_storage_status_to_model(user.status.clone()),
+            role: map_storage_role_to_model(user.role.clone()),
             is_following: false, // Default to false
         };
         
@@ -341,7 +362,6 @@ pub fn get_user_full_profile(principal: Principal) -> SquareResult<UserResponse>
                 like_count: stats.likes_received, // Map likes_received to like_count
                 share_count: stats.shares_received, // Map shares_received to share_count
                 points: 0, // Default points
-                level: 0, // Default level
                 reputation: 0, // Default reputation
             },
             status: user::UserStatus::Active, // Use model UserStatus instead of storage
@@ -474,10 +494,9 @@ pub fn update_user_status(request: UserStatusUpdateRequest) -> SquareResult<()> 
         // Update status - convert from models::user::UserStatus to storage_main::UserStatus
         user.status = match request.status {
             user::UserStatus::Active => StorageUserStatus::Active,
-            user::UserStatus::Inactive => StorageUserStatus::Restricted, // map Inactive to Restricted
             user::UserStatus::Suspended => StorageUserStatus::Suspended,
             user::UserStatus::Banned => StorageUserStatus::Banned,
-            user::UserStatus::Verified => StorageUserStatus::Active, // map Verified to Active
+            user::UserStatus::Restricted => StorageUserStatus::Restricted,
         };
         
         Ok(())
@@ -500,6 +519,7 @@ pub fn update_user_role(request: UserRoleUpdateRequest) -> SquareResult<()> {
             user::UserRole::User => StorageUserRole::User,
             user::UserRole::Moderator => StorageUserRole::Moderator,
             user::UserRole::Admin => StorageUserRole::Admin,
+            user::UserRole::Creator => StorageUserRole::Creator,
         };
         
         Ok(())
@@ -546,7 +566,7 @@ pub fn get_followers(principal: Principal, caller: Option<Principal>) -> SquareR
                     avatar: follower_profile.avatar.clone(),
                     followers_count: follower_profile.followers.len() as u64,
                     following_count: follower_profile.followed_users.len() as u64,
-                    is_following: false, // 默认为 false
+                    is_following: false,
                     is_followed_by_caller,
                 });
             }
@@ -599,7 +619,7 @@ pub fn get_following(principal: Principal, caller: Option<Principal>) -> SquareR
                     avatar: followed_profile.avatar.clone(),
                     followers_count: followed_profile.followers.len() as u64,
                     following_count: followed_profile.followed_users.len() as u64,
-                    is_following: false, // 默认为 false
+                    is_following: false,
                     is_followed_by_caller,
                 });
             }
@@ -620,7 +640,7 @@ pub fn get_user_leaderboard(pagination: PaginationParams) -> SquareResult<UserLe
         for principal in storage.user_profiles.keys() {
             if let (Some(profile), Some(user_rewards)) = (storage.user_profiles.get(principal), storage.user_rewards.get(principal)) {
                 // Get user stats or create default values if not found
-                let (_post_count, _article_count) = match storage.user_stats.get(principal) {
+                let (post_count, article_count) = match storage.user_stats.get(principal) {
                     Some(stats) => (stats.post_count, stats.article_count),
                     None => (0, 0), // Default values if stats not found
                 };
@@ -632,8 +652,12 @@ pub fn get_user_leaderboard(pagination: PaginationParams) -> SquareResult<UserLe
                     handle: profile.handle.clone(),
                     avatar: profile.avatar.clone(),
                     points: user_rewards.points,
-                    level: user_rewards.points / 100,
                     rank: 0,
+                    last_claim_date: user_rewards.last_claim_date,
+                    consecutive_daily_logins: 0,
+                    article_count,
+                    post_count,
+                    followers_count: profile.followers.len() as u64,
                 });
             }
         }
@@ -670,13 +694,13 @@ pub fn verify_user(principal: Principal) -> SquareResult<()> {
         let user = storage.users.get_mut(&principal)
             .ok_or_else(|| SquareError::NotFound("User not found".to_string()))?;
         
-        // Check if user is already verified
-        if user.status == StorageUserStatus::Verified {
+        // Check if user is already active (verified)
+        if user.status == StorageUserStatus::Active {
             return Err(SquareError::InvalidOperation("User is already verified".to_string()));
         }
         
-        // Update user status to verified
-        user.status = StorageUserStatus::Verified;
+        // Update user status to active (verified)
+        user.status = StorageUserStatus::Active;
         
         // Update in sharded storage
         let user_clone = user.clone();

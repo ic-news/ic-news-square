@@ -161,8 +161,8 @@ pub fn get_post(id: String) -> SquareResult<PostResponse> {
                 principal: post.author,
                 username: "Unknown".to_string(),
                 handle: "unknown".to_string(),
-                avatar: Some("".to_string()),
-                bio: Some("".to_string()),
+                avatar: "".to_string(),
+                bio: "".to_string(),
                 is_followed_by_caller: false,
                 is_following: false,
                 followers_count: 0,
@@ -205,6 +205,10 @@ pub fn get_post(id: String) -> SquareResult<PostResponse> {
         shares_count,
         visibility: post.visibility,
         author_info,
+        news_reference: post.news_reference.map(|nr| crate::models::content::NewsReferenceResponse {
+            metadata: nr.metadata,
+            canister_id: nr.canister_id,
+        }),
     })
 }
 
@@ -238,8 +242,8 @@ pub fn get_article(id: String) -> SquareResult<ArticleResponse> {
                 principal: article.author,
                 username: "Unknown".to_string(),
                 handle: "unknown".to_string(),
-                avatar: Some("".to_string()),
-                bio: Some("".to_string()),
+                avatar: "".to_string(),
+                bio: "".to_string(),
                 is_followed_by_caller: false,
                 is_following: false,
                 followers_count: 0,
@@ -281,6 +285,10 @@ pub fn get_article(id: String) -> SquareResult<ArticleResponse> {
         comments_count,
         shares_count,
         author_info,
+        news_reference: article.news_reference.map(|nr| crate::models::content::NewsReferenceResponse {
+            metadata: nr.metadata,
+            canister_id: nr.canister_id,
+        }),
     })
 }
 
@@ -314,8 +322,8 @@ pub fn get_comment(id: String, caller: Option<Principal>) -> SquareResult<Commen
                 principal: comment.author,
                 username: "Unknown".to_string(),
                 handle: "unknown".to_string(),
-                avatar: Some("".to_string()),
-                bio: Some("".to_string()),
+                avatar: "".to_string(),
+                bio: "".to_string(),
                 is_followed_by_caller: false,
                 is_following: false,
                 followers_count: 0,
@@ -341,7 +349,7 @@ pub fn get_comment(id: String, caller: Option<Principal>) -> SquareResult<Commen
         comments_count: 0, // Will be populated by caller if needed
         shares_count: 0,   // Will be populated by caller if needed
         visibility: ContentVisibility::Public, // Default visibility for comments
-        child_comments: Vec::new(), // Empty for now, will be populated by caller if needed
+        child_comments: Vec::<Box<CommentResponse>>::new(), // Empty for now, will be populated by caller if needed
         author_info,
         is_liked,
     })

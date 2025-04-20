@@ -3,9 +3,14 @@ use ic_cdk::api::time;
 
 use crate::auth::is_admin;
 use crate::models::content::*;
+use crate::models::interaction::*;
+use crate::models::user::*;
 use crate::models::display::{FeedResponse, ContentDetailResponse};
-use crate::models::error::{SquareError, SquareResult};
-use crate::storage::{STORAGE, Post, Article, Comment, ContentStatus, ParentType, ContentVisibility};
+use crate::storage_main::*;
+use crate::storage_main::Storage;
+use crate::utils::*;
+use crate::{SquareError, SquareResult};
+use crate::storage::{STORAGE, Post, Article, Comment, ContentStatus, ParentType, ContentVisibility, NewsReference};
 // use crate::storage::sharded_ops::{insert_post_sharded};
 use crate::utils::error_handler::{content_too_long_error, not_found_error, unauthorized_error, log_and_return, validation_error};
 
@@ -93,6 +98,10 @@ pub fn create_post(request: CreatePostRequest, caller: Principal) -> SquareResul
             updated_at: time() / 1_000_000,
             status: ContentStatus::Active,
             visibility: request.visibility.unwrap_or(ContentVisibility::Public),
+            news_reference: request.news_reference.map(|nr| NewsReference {
+                metadata: nr.metadata,
+                canister_id: nr.canister_id,
+            }),
         };
         
         // Store post in both traditional and sharded storage
@@ -140,6 +149,10 @@ pub fn create_post(request: CreatePostRequest, caller: Principal) -> SquareResul
         comments_count: 0,
         shares_count: 0,
         author_info,
+        news_reference: post.news_reference.map(|nr| NewsReferenceResponse {
+            metadata: nr.metadata,
+            canister_id: nr.canister_id,
+        }),
     })
     .map_err(|e: std::cell::BorrowMutError| SquareError::SystemError(format!("Failed to create post: {}", e)))
 }
@@ -190,16 +203,17 @@ pub fn get_post(id: String) -> SquareResult<PostResponse> {
         let post_updated_at = post.updated_at;
         let post_status = post.status.clone();
         let post_visibility = post.visibility.clone();
+        let post_news_reference = post.news_reference.clone();
         
         Ok((post_id, post_author, post_content, post_media_urls, post_hashtags, 
             post_token_mentions, post_tags, post_created_at, post_updated_at, 
-            post_status, post_visibility, likes_count, comments_count, shares_count))
+            post_status, post_visibility, likes_count, comments_count, shares_count, post_news_reference))
     })?;
     
     // Destructure the retrieved data
     let (post_id, post_author, post_content, post_media_urls, post_hashtags, 
          post_token_mentions, post_tags, post_created_at, post_updated_at, 
-         post_status, post_visibility, likes_count, comments_count, shares_count) = post_data;
+         post_status, post_visibility, likes_count, comments_count, shares_count, post_news_reference) = post_data;
     
     // After STORAGE borrowing ends, get user information
     let author_info = crate::services::user::get_user_social_info(post_author, None)?;
@@ -221,6 +235,10 @@ pub fn get_post(id: String) -> SquareResult<PostResponse> {
         comments_count,
         shares_count,
         author_info,
+        news_reference: post_news_reference.map(|nr| NewsReferenceResponse {
+            metadata: nr.metadata,
+            canister_id: nr.canister_id,
+        }),
     })
 }
 
@@ -283,6 +301,10 @@ pub fn get_posts(pagination: PaginationParams) -> SquareResult<PostsResponse> {
                 comments_count,
                 shares_count,
                 author_info,
+                news_reference: post.news_reference.map(|nr| NewsReferenceResponse {
+                    metadata: nr.metadata,
+                    canister_id: nr.canister_id,
+                }),
             });
         }
     }
@@ -399,6 +421,14 @@ pub fn update_post(request: UpdatePostRequest, caller: Principal) -> SquareResul
             post.visibility = visibility;
         }
         
+        // Update news reference if provided
+        if let Some(news_reference) = request.news_reference {
+            post.news_reference = Some(NewsReference {
+                metadata: news_reference.metadata,
+                canister_id: news_reference.canister_id,
+            });
+        }
+        
         // Update timestamp
         post.updated_at = time() / 1_000_000;
         
@@ -414,6 +444,7 @@ pub fn update_post(request: UpdatePostRequest, caller: Principal) -> SquareResul
         let post_status = post.status.clone();
         let post_visibility = post.visibility.clone();
         let post_tags = post.tags.clone();
+        let post_news_reference = post.news_reference.clone();
         
         // Count likes
         let likes_count = storage.likes.get(&post_id)
@@ -428,13 +459,13 @@ pub fn update_post(request: UpdatePostRequest, caller: Principal) -> SquareResul
         // Return all necessary data
         Ok((post_id, post_author, post_content, post_media_urls, post_hashtags, 
             post_token_mentions, post_created_at, post_updated_at, post_status, 
-            post_tags, post_visibility, likes_count, shares_count))
+            post_tags, post_visibility, likes_count, shares_count, post_news_reference))
     })?;
     
     // Destructure the retrieved data
     let (post_id, post_author, post_content, post_media_urls, post_hashtags, 
          post_token_mentions, post_created_at, post_updated_at, post_status, 
-         post_tags, post_visibility, likes_count, shares_count) = post_data;
+         post_tags, post_visibility, likes_count, shares_count, post_news_reference) = post_data;
     
     // After STORAGE's mutable borrow ends, get user information
     let author_info = crate::services::user::get_user_social_info(post_author, None)?;
@@ -456,6 +487,10 @@ pub fn update_post(request: UpdatePostRequest, caller: Principal) -> SquareResul
         tags: post_tags,
         comments_count: 0, // We'll need to count comments in a separate function
         author_info,
+        news_reference: post_news_reference.map(|nr| NewsReferenceResponse {
+            metadata: nr.metadata,
+            canister_id: nr.canister_id,
+        }),
     })
 }
 
@@ -563,6 +598,10 @@ pub fn create_article(request: CreateArticleRequest, caller: Principal) -> Squar
             updated_at: time() / 1_000_000,
             status: ContentStatus::Active,
             visibility: request.visibility.unwrap_or(ContentVisibility::Public),
+            news_reference: request.news_reference.map(|nr| NewsReference {
+                metadata: nr.metadata,
+                canister_id: nr.canister_id,
+            }),
         };
         
         // Store article
@@ -707,7 +746,7 @@ pub fn create_comment(request: CreateCommentRequest, caller: Principal) -> Squar
             comments_count: 0,
             shares_count: 0,
             visibility: ContentVisibility::Public,
-            child_comments: Vec::new(),
+            child_comments: Vec::<Box<CommentResponse>>::new(), // Empty vector of boxed comment responses
             author_info,
             is_liked: false, // New comment is not liked by default
         })
@@ -788,16 +827,17 @@ pub fn get_article(id: String) -> SquareResult<ArticleResponse> {
         let article_updated_at = article.updated_at;
         let article_status = article.status.clone();
         let article_visibility = article.visibility.clone();
+        let article_news_reference = article.news_reference.clone();
         
         Ok((article_id, article_author, article_content, article_media_urls,
             article_hashtags, article_token_mentions, article_created_at,
-            article_updated_at, article_status, article_visibility, likes_count, comments_count, shares_count))
+            article_updated_at, article_status, article_visibility, likes_count, comments_count, shares_count, article_news_reference))
     })?;
     
     // Destructure the retrieved data
     let (article_id, article_author, article_content, article_media_urls,
         article_hashtags, article_token_mentions, article_created_at,
-        article_updated_at, article_status, article_visibility, likes_count, comments_count, shares_count) = article_data;
+        article_updated_at, article_status, article_visibility, likes_count, comments_count, shares_count, article_news_reference) = article_data;
     
     // After STORAGE borrowing ends, get user information
     let author_info = crate::services::user::get_user_social_info(article_author, None)?;
@@ -806,7 +846,6 @@ pub fn get_article(id: String) -> SquareResult<ArticleResponse> {
     Ok(ArticleResponse {
         id: article_id,
         author: article_author,
-
         content: article_content,
         media_urls: article_media_urls,
         hashtags: article_hashtags,
@@ -819,6 +858,10 @@ pub fn get_article(id: String) -> SquareResult<ArticleResponse> {
         comments_count,
         shares_count,
         author_info,
+        news_reference: article_news_reference.map(|nr| NewsReferenceResponse {
+            metadata: nr.metadata,
+            canister_id: nr.canister_id,
+        }),
     })
 }
 
@@ -946,6 +989,14 @@ pub fn update_article(request: UpdateArticleRequest, caller: Principal) -> Squar
             article.visibility = visibility;
         }
         
+        // Update news reference if provided
+        if let Some(news_reference) = request.news_reference {
+            article.news_reference = Some(NewsReference {
+                metadata: news_reference.metadata,
+                canister_id: news_reference.canister_id,
+            });
+        }
+        
         // Update timestamp
         article.updated_at = time() / 1_000_000;
         
@@ -1035,6 +1086,9 @@ pub fn get_comment(id: String, caller: Option<Principal>) -> SquareResult<Commen
         // Get author info
         let author_info = crate::services::user::get_user_social_info(comment.author, None)?;
             
+        // Get child comments
+        let child_comments_full = get_child_comments(&storage, &comment.child_comments, caller);
+            
         Ok(CommentResponse {
             id: comment.id.clone(),
             author: comment.author,
@@ -1048,7 +1102,7 @@ pub fn get_comment(id: String, caller: Option<Principal>) -> SquareResult<Commen
             comments_count: comment.child_comments.len() as u64,
             shares_count: 0, // TODO: Implement share functionality
             visibility: ContentVisibility::Public, // Default to public for existing comments
-            child_comments: comment.child_comments.clone(),
+            child_comments: child_comments_full, // Use the child comments we retrieved earlier
             author_info,
             is_liked,
         })
@@ -1110,7 +1164,7 @@ pub fn update_comment(request: UpdateCommentRequest, caller: Principal) -> Squar
         let author_info = crate::services::user::get_user_social_info(comment_author, None)?;
         
         // Get likes and check if caller has liked with a new borrow
-        let (likes_count, is_liked) = STORAGE.with(|storage| {
+        let (likes_count, is_liked, child_comments_full) = STORAGE.with(|storage| {
             let storage = storage.borrow();
             let likes = storage.likes.get(&comment_id);
             let likes_count = likes
@@ -1119,7 +1173,11 @@ pub fn update_comment(request: UpdateCommentRequest, caller: Principal) -> Squar
             let is_liked = likes
                 .map(|likes| likes.contains(&caller))
                 .unwrap_or(false);
-            (likes_count, is_liked)
+            
+            // Get child comments
+            let child_comments_full = get_child_comments(&storage, &child_comments, Some(caller));
+            
+            (likes_count, is_liked, child_comments_full)
         });
         
         Ok(CommentResponse {
@@ -1135,7 +1193,7 @@ pub fn update_comment(request: UpdateCommentRequest, caller: Principal) -> Squar
             comments_count: child_comments.len() as u64,
             shares_count: 0, // TODO: Implement share functionality
             visibility: ContentVisibility::Public, // Default to public for existing comments
-            child_comments,
+            child_comments: child_comments_full, // Use the child comments we retrieved earlier
             author_info,
             is_liked,
         })
@@ -1180,6 +1238,60 @@ pub fn delete_comment(id: String, caller: Principal) -> SquareResult<()> {
         
         Ok(())
     })
+}
+
+// Helper function to recursively get child comments
+fn get_child_comments(storage: &Storage, child_ids: &Vec<String>, caller: Option<Principal>) -> Vec<Box<CommentResponse>> {
+    let mut child_comments = Vec::new();
+    
+    for child_id in child_ids {
+        if let Some(comment) = storage.comments.get(child_id) {
+            // Skip inactive comments
+            if comment.status != ContentStatus::Active {
+                continue;
+            }
+            
+            let likes = storage.likes.get(&comment.id);
+            let likes_count = likes
+                .map(|likes| likes.len() as u64)
+                .unwrap_or(0);
+            
+            // Check if the caller has liked this comment
+            let is_liked = if let Some(caller) = caller {
+                likes.map(|likes| likes.contains(&caller)).unwrap_or(false)
+            } else {
+                false
+            };
+            
+            let author_info = match crate::services::user::get_user_social_info(comment.author, None) {
+                Ok(info) => info,
+                Err(_) => continue, // Skip if we can't get author info
+            };
+            
+            // Recursively get child comments
+            let nested_child_comments = get_child_comments(storage, &comment.child_comments, caller);
+            
+            child_comments.push(Box::new(CommentResponse {
+                id: comment.id.clone(),
+                author: comment.author,
+                content: comment.content.clone(),
+                parent_id: comment.parent_id.clone(),
+                parent_type: comment.parent_type.clone(),
+                created_at: comment.created_at,
+                updated_at: comment.updated_at,
+                status: comment.status.clone(),
+                likes_count,
+                comments_count: comment.child_comments.len() as u64,
+                shares_count: 0, // TODO: Implement share functionality
+                visibility: ContentVisibility::Public, // Default to public for existing comments
+                child_comments: nested_child_comments,
+                author_info,
+                is_liked,
+            }));
+        }
+    }
+    
+    child_comments
 }
 
 pub fn get_comments(parent_id: String, parent_type_str: String, pagination: PaginationParams, caller: Option<Principal>) -> SquareResult<CommentsResponse> {
@@ -1245,6 +1357,9 @@ pub fn get_comments(parent_id: String, parent_type_str: String, pagination: Pagi
                     Err(_) => return None,
                 };
                     
+                // Get child comments recursively
+                let child_comments = get_child_comments(&storage, &comment.child_comments, caller);
+                
                 Some(CommentResponse {
                     id: comment.id.clone(),
                     author: comment.author,
@@ -1258,7 +1373,7 @@ pub fn get_comments(parent_id: String, parent_type_str: String, pagination: Pagi
                     comments_count: comment.child_comments.len() as u64,
                     shares_count: 0, // TODO: Implement share functionality
                     visibility: ContentVisibility::Public, // Default to public for existing comments
-                    child_comments: comment.child_comments.clone(),
+                    child_comments: child_comments,
                     author_info,
                     is_liked,
                 })
@@ -1291,6 +1406,7 @@ pub fn get_user_content(principal: Principal, content_type: Option<ContentType>,
         
         let mut posts = Vec::new();
         let mut articles = Vec::new();
+        let mut comments = Vec::new();
         
         // Get user's content based on content type
         match content_type {
@@ -1329,9 +1445,29 @@ pub fn get_user_content(principal: Principal, content_type: Option<ContentType>,
             _ => {}
         }
         
+        match content_type {
+            None | Some(ContentType::Comment) => {
+                // Get user's comments
+                if let Some(user_comments) = storage.user_comments.get(&principal) {
+                    for comment_id in user_comments {
+                        if let Some(comment) = storage.comments.get(comment_id) {
+                            if comment.status == ContentStatus::Active {
+                                // 使用 get_comment 函数获取评论详情，传入当前用户作为可选参数
+                                if let Ok(comment_response) = get_comment(comment_id.clone(), Some(principal)) {
+                                    comments.push(comment_response);
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            _ => {}
+        }
+        
         // Sort by created_at (newest first)
-        posts.sort_by(|a, b| b.created_at.cmp(&a.created_at));
-        articles.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+        posts.sort_by(|a: &PostResponse, b: &PostResponse| b.created_at.cmp(&a.created_at));
+        articles.sort_by(|a: &ArticleResponse, b: &ArticleResponse| b.created_at.cmp(&a.created_at));
+        comments.sort_by(|a: &CommentResponse, b: &CommentResponse| b.created_at.cmp(&a.created_at));
         
         // Apply pagination (simplified - in a real app we would paginate the combined list)
         let start = std::cmp::min(pagination.offset, posts.len());
@@ -1342,14 +1478,20 @@ pub fn get_user_content(principal: Principal, content_type: Option<ContentType>,
         let end = std::cmp::min(start + pagination.limit, articles.len());
         articles = articles[start..end].to_vec();
         
+        let start = std::cmp::min(pagination.offset, comments.len());
+        let end = std::cmp::min(start + pagination.limit, comments.len());
+        comments = comments[start..end].to_vec();
+        
         // Clone for use in has_more calculation
         let posts_len = posts.len();
         let articles_len = articles.len();
+        let comments_len = comments.len();
         
         Ok(FeedResponse {
             posts,
             articles,
-            has_more: posts_len >= pagination.limit || articles_len >= pagination.limit,
+            comments,
+            has_more: posts_len >= pagination.limit || articles_len >= pagination.limit || comments_len >= pagination.limit,
             next_offset: pagination.offset + pagination.limit,
         })
     })
@@ -1388,6 +1530,9 @@ pub fn get_content_detail(content_id: String, content_type: ContentType, caller:
                             Ok(info) => info,
                             Err(_) => return None,
                         };
+                        
+                        // Get child comments
+                        let child_comments_full = get_child_comments(&storage, &comment.child_comments, caller);
                             
                         Some(CommentResponse {
                             id: comment.id.clone(),
@@ -1402,7 +1547,7 @@ pub fn get_content_detail(content_id: String, content_type: ContentType, caller:
                             comments_count: comment.child_comments.len() as u64,
                             shares_count: 0, // TODO: Implement share functionality
                             visibility: ContentVisibility::Public, // Default to public for existing comments
-                            child_comments: comment.child_comments.clone(),
+                            child_comments: child_comments_full, // Use the child comments we retrieved earlier
                             author_info,
                             is_liked,
                         })
@@ -1444,6 +1589,9 @@ pub fn get_content_detail(content_id: String, content_type: ContentType, caller:
                             Ok(info) => info,
                             Err(_) => return None,
                         };
+                        
+                        // Get child comments
+                        let child_comments_full = get_child_comments(&storage, &comment.child_comments, caller);
                             
                         Some(CommentResponse {
                             id: comment.id.clone(),
@@ -1458,7 +1606,7 @@ pub fn get_content_detail(content_id: String, content_type: ContentType, caller:
                             comments_count: comment.child_comments.len() as u64,
                             shares_count: 0, // TODO: Implement share functionality
                             visibility: ContentVisibility::Public, // Default to public for existing comments
-                            child_comments: comment.child_comments.clone(),
+                            child_comments: child_comments_full, // Use the child comments we retrieved earlier
                             author_info,
                             is_liked,
                         })

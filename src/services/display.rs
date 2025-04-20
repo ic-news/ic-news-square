@@ -26,6 +26,8 @@ pub fn get_dashboard_feed(principal: Principal, pagination: crate::models::conte
         content_types: None,
         tags: None,
         pagination: pagination.clone(),
+        sort_by: Some(crate::models::discovery::SortOption::Trending),
+        filter: None,
     }).map_err(|e| {
         e
     })?;
@@ -44,14 +46,22 @@ pub fn get_dashboard_feed(principal: Principal, pagination: crate::models::conte
             content_types: None,
             tags: None,
             pagination: pagination.clone(),
+            sort_by: Some(crate::models::discovery::SortOption::Latest),
+            filter: Some(crate::models::discovery::ContentFilter {
+                hashtag: None,
+                token_mention: None,
+                created_after: None,
+                created_before: None,
+                author: Some(followed_principals[0]), // Filter by the first followed user as an example
+            }),
         }).map_err(|e| {
-
             e
         })?
     } else {
         FeedResponse {
             posts: vec![],
             articles: vec![],
+            comments: vec![],
             has_more: false,
             next_offset: 0,
         }

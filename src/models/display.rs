@@ -8,6 +8,7 @@ use crate::models::discovery::TrendingTopicResponse;
 pub struct FeedResponse {
     pub posts: Vec<PostResponse>,
     pub articles: Vec<ArticleResponse>,
+    pub comments: Vec<CommentResponse>,
     pub has_more: bool,
     pub next_offset: usize,
 }

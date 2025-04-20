@@ -7,7 +7,27 @@ use crate::models::tag::TagType;
 pub struct DiscoverContentRequest {
     pub content_types: Option<Vec<ContentType>>,
     pub tags: Option<Vec<String>>,
-    pub pagination: PaginationParams
+    pub pagination: PaginationParams,
+    pub sort_by: Option<SortOption>,
+    pub filter: Option<ContentFilter>
+}
+
+#[derive(CandidType, Deserialize, Clone)]
+pub struct ContentFilter {
+    pub hashtag: Option<String>,
+    pub token_mention: Option<String>,
+    pub created_after: Option<u64>,
+    pub created_before: Option<u64>,
+    pub author: Option<Principal>
+}
+
+#[derive(CandidType, Deserialize, Clone, PartialEq, Debug)]
+pub enum SortOption {
+    MostShared,
+    MostCommented,
+    Trending,
+    MostLiked,
+    Latest
 }
 
 #[derive(CandidType, Deserialize, Clone)]
@@ -48,14 +68,14 @@ pub struct SearchResultResponse {
     pub content_type: ContentType,
     pub title: Option<String>,
     pub snippet: String,
-    pub author: Principal,
+    pub author: crate::models::user::UserSocialResponse,
     pub created_at: u64,
     pub relevance_score: f64
 }
 
 #[derive(CandidType, Deserialize, Clone, Debug)]
 pub struct TrendingTopicResponse {
-    pub name: String,
+    pub topic: String,
     pub count: u64,
     pub trend_direction: TrendDirection
 }
@@ -76,7 +96,8 @@ pub struct HotTagInfo {
 // Enums
 #[derive(CandidType, Deserialize, Clone, PartialEq, Debug)]
 pub enum TrendDirection {
+    New,
+    Stable,
     Rising,
-    Falling,
-    Stable
+    Falling
 }

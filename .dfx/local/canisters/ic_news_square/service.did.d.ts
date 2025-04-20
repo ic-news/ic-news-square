@@ -58,6 +58,7 @@ export interface ArticleResponse {
   'hashtags' : Array<string>,
   'shares_count' : bigint,
   'media_urls' : Array<string>,
+  'news_reference' : [] | [NewsReferenceRequest],
   'created_at' : bigint,
   'author' : Principal,
   'token_mentions' : Array<string>,
@@ -76,7 +77,7 @@ export interface CommentResponse {
   'status' : ContentStatus,
   'updated_at' : bigint,
   'content' : string,
-  'child_comments' : Array<string>,
+  'child_comments' : Array<CommentResponse>,
   'author_info' : UserSocialResponse,
   'shares_count' : bigint,
   'created_at' : bigint,
@@ -98,6 +99,19 @@ export interface CompleteTaskRequest {
   'task_id' : string,
   'proof' : [] | [string],
 }
+export interface ContentCreationRequirement {
+  'comment_count' : [] | [bigint],
+  'article_count' : [] | [bigint],
+  'post_count' : [] | [bigint],
+  'required_hashtags' : [] | [Array<string>],
+}
+export interface ContentFilter {
+  'hashtag' : [] | [string],
+  'token_mention' : [] | [string],
+  'created_after' : [] | [bigint],
+  'author' : [] | [Principal],
+  'created_before' : [] | [bigint],
+}
 export interface ContentModerationRequest {
   'status' : ContentStatus,
   'content_id' : string,
@@ -118,6 +132,7 @@ export interface CreateArticleRequest {
   'content' : string,
   'hashtags' : Array<string>,
   'media_urls' : Array<string>,
+  'news_reference' : [] | [NewsReferenceRequest],
   'token_mentions' : [] | [Array<string>],
   'visibility' : [] | [ContentVisibility],
 }
@@ -134,6 +149,7 @@ export interface CreatePostRequest {
   'hashtags' : Array<string>,
   'media_urls' : Array<string>,
   'tags' : [] | [Array<string>],
+  'news_reference' : [] | [NewsReferenceRequest],
   'token_mentions' : [] | [Array<string>],
   'mentions' : [] | [Array<string>],
   'visibility' : [] | [ContentVisibility],
@@ -148,7 +164,7 @@ export interface CreateTaskRequest {
   'completion_criteria' : string,
   'start_time' : [] | [bigint],
   'task_type' : TaskType,
-  'requirements' : TaskRequirements,
+  'requirements' : [] | [TaskRequirements],
 }
 export interface CyclesBalanceResponse {
   'estimated_days_remaining' : bigint,
@@ -186,8 +202,10 @@ export interface DailyConsumption {
   'consumption' : bigint,
 }
 export interface DiscoverContentRequest {
+  'sort_by' : [] | [SortOption],
   'pagination' : PaginationParams,
   'tags' : [] | [Array<string>],
+  'filter' : [] | [ContentFilter],
   'content_types' : [] | [Array<ParentType>],
 }
 export type ErrorCode = { 'MissingRequiredField' : null } |
@@ -241,6 +259,7 @@ export type ErrorSeverity = { 'Error' : null } |
   { 'Warning' : null };
 export interface FeedResponse {
   'articles' : Array<ArticleResponse>,
+  'comments' : Array<CommentResponse>,
   'posts' : Array<PostResponse>,
   'next_offset' : bigint,
   'has_more' : boolean,
@@ -278,6 +297,11 @@ export interface LikesResponse {
   'content_type' : ParentType,
   'likes' : Array<UserLikeInfo>,
 }
+export interface LoginStreakRequirement { 'days_required' : bigint }
+export interface NewsReferenceRequest {
+  'metadata' : Array<[string, string]>,
+  'canister_id' : Principal,
+}
 export interface NotificationPreferences {
   'shares' : boolean,
   'follows' : boolean,
@@ -305,12 +329,6 @@ export interface PersonalizedRecommendationsRequest {
   'include_similar_to_liked' : [] | [boolean],
   'content_types' : [] | [Array<ParentType>],
 }
-export interface PointsTransaction {
-  'reference_id' : [] | [string],
-  'timestamp' : bigint,
-  'amount' : bigint,
-  'reason' : string,
-}
 export interface PostResponse {
   'id' : string,
   'status' : ContentStatus,
@@ -321,6 +339,7 @@ export interface PostResponse {
   'shares_count' : bigint,
   'media_urls' : Array<string>,
   'tags' : Array<string>,
+  'news_reference' : [] | [NewsReferenceRequest],
   'created_at' : bigint,
   'author' : Principal,
   'token_mentions' : Array<string>,
@@ -334,12 +353,12 @@ export interface PostsResponse {
   'next_offset' : bigint,
 }
 export interface RegisterUserRequest {
-  'bio' : [] | [string],
+  'bio' : string,
   'username' : string,
   'interests' : [] | [Array<string>],
   'handle' : string,
   'social_links' : [] | [Array<[string, string]>],
-  'avatar' : [] | [string],
+  'avatar' : string,
 }
 export interface ReportContentRequest {
   'content_id' : string,
@@ -380,7 +399,7 @@ export type Result_19 = { 'Ok' : Array<TrendingTopicResponse> } |
   { 'Err' : SquareError };
 export type Result_2 = { 'Ok' : TaskCompletionResponse } |
   { 'Err' : SquareError };
-export type Result_20 = { 'Ok' : UserRewardsResponse } |
+export type Result_20 = { 'Ok' : Array<[string, Value]> } |
   { 'Err' : SquareError };
 export type Result_21 = { 'Ok' : Array<Principal> } |
   { 'Err' : string };
@@ -412,13 +431,23 @@ export interface SearchResultResponse {
   'relevance_score' : number,
   'snippet' : string,
   'created_at' : bigint,
-  'author' : Principal,
+  'author' : UserSocialResponse,
 }
 export interface SharesResponse {
   'content_id' : string,
   'count' : bigint,
   'content_type' : ParentType,
 }
+export interface SocialInteractionRequirement {
+  'share_count' : [] | [bigint],
+  'like_count' : [] | [bigint],
+  'follow_count' : [] | [bigint],
+}
+export type SortOption = { 'MostShared' : null } |
+  { 'MostCommented' : null } |
+  { 'Trending' : null } |
+  { 'MostLiked' : null } |
+  { 'Latest' : null };
 export type SquareError = { 'Enhanced' : SquareErrorEnhanced } |
   { 'ValidationFailed' : string } |
   { 'SystemError' : string } |
@@ -439,18 +468,18 @@ export type TagType = { 'Custom' : null } |
   { 'Topic' : null } |
   { 'Location' : null };
 export interface TaskCompletionResponse {
-  'level_up' : boolean,
   'total_points' : bigint,
-  'level' : bigint,
   'message' : string,
   'success' : boolean,
   'points_earned' : bigint,
 }
 export interface TaskRequirements {
-  'required_tokens' : Array<string>,
-  'required_nfts' : Array<string>,
-  'min_level' : bigint,
-  'custom_requirements' : Array<string>,
+  'social_interaction' : [] | [SocialInteractionRequirement],
+  'required_tokens' : [] | [Array<string>],
+  'required_nfts' : [] | [Array<string>],
+  'login_streak' : [] | [LoginStreakRequirement],
+  'custom_requirements' : [] | [Array<string>],
+  'content_creation' : [] | [ContentCreationRequirement],
 }
 export interface TaskResponse {
   'id' : string,
@@ -468,11 +497,12 @@ export type TaskType = { 'OneTime' : null } |
   { 'Daily' : null } |
   { 'Monthly' : null } |
   { 'Special' : null };
-export type TrendDirection = { 'Stable' : null } |
+export type TrendDirection = { 'New' : null } |
+  { 'Stable' : null } |
   { 'Rising' : null } |
   { 'Falling' : null };
 export interface TrendingTopicResponse {
-  'name' : string,
+  'topic' : string,
   'count' : bigint,
   'trend_direction' : TrendDirection,
 }
@@ -481,6 +511,7 @@ export interface UpdateArticleRequest {
   'content' : string,
   'hashtags' : [] | [Array<string>],
   'media_urls' : [] | [Array<string>],
+  'news_reference' : [] | [NewsReferenceRequest],
   'token_mentions' : [] | [Array<string>],
   'visibility' : [] | [ContentVisibility],
 }
@@ -496,6 +527,7 @@ export interface UpdatePostRequest {
   'hashtags' : [] | [Array<string>],
   'media_urls' : [] | [Array<string>],
   'tags' : [] | [Array<string>],
+  'news_reference' : [] | [NewsReferenceRequest],
   'token_mentions' : [] | [Array<string>],
   'visibility' : [] | [ContentVisibility],
 }
@@ -511,11 +543,15 @@ export interface UpdateProfileRequest {
 export interface UserLeaderboardItem {
   'principal' : Principal,
   'username' : string,
+  'last_claim_date' : [] | [bigint],
+  'consecutive_daily_logins' : bigint,
   'rank' : bigint,
-  'level' : bigint,
+  'article_count' : bigint,
+  'post_count' : bigint,
   'handle' : string,
+  'followers_count' : bigint,
   'points' : bigint,
-  'avatar' : [] | [string],
+  'avatar' : string,
 }
 export interface UserLeaderboardResponse {
   'total_users' : bigint,
@@ -535,27 +571,26 @@ export interface UserPrivacySettings {
   'profile_visibility' : ContentVisibility,
 }
 export interface UserProfileResponse {
-  'bio' : [] | [string],
+  'bio' : string,
   'is_following' : boolean,
-  'updated_at' : bigint,
+  'status' : UserStatus,
+  'last_login' : bigint,
   'principal' : Principal,
   'username' : string,
-  'interests' : Array<string>,
+  'role' : UserRole,
   'following_count' : bigint,
-  'created_at' : bigint,
   'handle' : string,
+  'registered_at' : bigint,
   'followers_count' : bigint,
   'social_links' : Array<[string, string]>,
-  'avatar' : [] | [string],
+  'avatar' : string,
 }
-export interface UserRewardsResponse {
-  'completed_tasks' : Array<string>,
-  'points_history' : Array<PointsTransaction>,
-  'level' : bigint,
-  'points' : bigint,
-}
+export type UserRole = { 'User' : null } |
+  { 'Admin' : null } |
+  { 'Moderator' : null } |
+  { 'Creator' : null };
 export interface UserSocialResponse {
-  'bio' : [] | [string],
+  'bio' : string,
   'is_following' : boolean,
   'principal' : Principal,
   'username' : string,
@@ -563,8 +598,22 @@ export interface UserSocialResponse {
   'is_followed_by_caller' : boolean,
   'handle' : string,
   'followers_count' : bigint,
-  'avatar' : [] | [string],
+  'avatar' : string,
 }
+export type UserStatus = { 'Active' : null } |
+  { 'Suspended' : null } |
+  { 'Banned' : null } |
+  { 'Restricted' : null };
+export type Value = { 'Int' : bigint } |
+  { 'Map' : Array<[string, Value]> } |
+  { 'Nat' : bigint } |
+  { 'Blob' : Uint8Array | number[] } |
+  { 'Bool' : boolean } |
+  { 'Null' : null } |
+  { 'Text' : string } |
+  { 'Float' : number } |
+  { 'Principal' : Principal } |
+  { 'Array' : Array<Value> };
 export interface _SERVICE {
   'acknowledge_notification' : ActorMethod<[bigint], Result>,
   'add_manager' : ActorMethod<[Principal], Result_1>,
@@ -620,9 +669,6 @@ export interface _SERVICE {
   'report_content' : ActorMethod<[ReportContentRequest], Result>,
   'search_content' : ActorMethod<[SearchRequest], Result_22>,
   'share_content' : ActorMethod<[string, ParentType], Result>,
-  'test_error_context' : ActorMethod<[], ApiResponse_2>,
-  'test_error_handling' : ActorMethod<[], ApiResponse_1>,
-  'test_error_recovery_hints' : ActorMethod<[], ApiResponse_2>,
   'unfollow_user' : ActorMethod<[Principal], ApiResponse_1>,
   'unlike_content' : ActorMethod<[LikeContentRequest], Result>,
   'update_article' : ActorMethod<[UpdateArticleRequest], Result_3>,

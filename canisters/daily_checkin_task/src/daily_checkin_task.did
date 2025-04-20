@@ -6,12 +6,6 @@ type DailyCheckInResponse = record {
   points_earned : nat64;
   consecutive_days : nat64;
 };
-type PointsTransaction = record {
-  reference_id : opt text;
-  timestamp : nat64;
-  amount : int64;
-  reason : text;
-};
 type TaskConfig = record {
   title : text;
   description : text;
@@ -31,6 +25,18 @@ type TaskVerificationResponse = record {
   verification_data : opt VerificationData;
   success : bool;
 };
+type Value = variant {
+  Int : int64;
+  Map : vec record { text; Value };
+  Nat : nat64;
+  Blob : blob;
+  Bool : bool;
+  Null;
+  Text : text;
+  Float : float64;
+  Principal : principal;
+  Array : vec Value;
+};
 type VerificationData = record {
   task_id : text;
   metadata : vec record { text; text };
@@ -45,7 +51,7 @@ service : () -> {
   get_checkin_status : (principal) -> (vec record { text; text }) query;
   get_my_checkin_status : () -> (vec record { text; text }) query;
   get_task_config : () -> (TaskConfig) query;
-  get_user_rewards : (principal) -> (vec PointsTransaction) query;
+  get_user_rewards : (principal) -> (vec record { text; Value }) query;
   remove_admin : (principal) -> ();
   reset_user_streak : (principal) -> ();
   update_task_config : (TaskConfig) -> ();

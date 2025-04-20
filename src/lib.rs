@@ -14,7 +14,7 @@ mod utils;
 use models::content::{ContentType, PaginationParams, CreatePostRequest, UpdatePostRequest, PostResponse, PostsResponse, CreateArticleRequest, UpdateArticleRequest, ArticleResponse, CreateCommentRequest, UpdateCommentRequest, CommentResponse, CommentsResponse, ModerateContentRequest};
 use models::user::{RegisterUserRequest, UpdateProfileRequest, UserProfileResponse, UserSocialResponse, UserLeaderboardResponse, FollowUserRequest};
 use models::interaction::{LikeContentRequest, LikesResponse, SharesResponse, ReportContentRequest};
-use models::reward::{CompleteTaskRequest, TaskCompletionResponse, TaskResponse, AwardPointsRequest, CreateTaskRequest, UpdateTaskRequest, UserRewardsResponse};
+use models::reward::{CompleteTaskRequest, TaskCompletionResponse, TaskResponse, AwardPointsRequest, CreateTaskRequest, UpdateTaskRequest, UserRewardsResponse, Value};
 use models::discovery::{DiscoverContentRequest, SearchRequest, SearchResultResponse, GetTrendingTopicsRequest, TrendingTopicResponse, PersonalizedRecommendationsRequest};
 use models::display::{FeedResponse};
 use models::error::{SquareError, SquareResult, ErrorCode};
@@ -416,25 +416,32 @@ fn get_most_common_errors(limit: usize) -> ApiResponse<Vec<(ErrorCode, u64)>> {
     })()
 }
 
-#[update]
-fn test_error_handling() -> ApiResponse<()> {
-    with_error_handling(|| {
-        utils::error_test::generate_test_errors()
-    })()
+// State management for canister upgrades
+#[pre_upgrade]
+fn pre_upgrade() {
+    ic_cdk::println!("Starting pre-upgrade hook");
+    storage::migration::save_state_for_upgrade();
+    ic_cdk::println!("Pre-upgrade hook completed");
 }
 
-#[query]
-fn test_error_recovery_hints() -> ApiResponse<Vec<String>> {
-    with_error_handling(|| {
-        Ok(utils::error_test::test_error_recovery_hints())
-    })()
-}
-
-#[query]
-fn test_error_context() -> ApiResponse<Vec<String>> {
-    with_error_handling(|| {
-        Ok(utils::error_test::test_error_context())
-    })()
+#[post_upgrade]
+fn post_upgrade() {
+    ic_cdk::println!("Starting post-upgrade hook");
+    utils::error_interceptor::register_global_error_handler();
+    
+    // Restore state
+    storage::migration::restore_state_after_upgrade();
+    
+    // Initialize default tasks if needed
+    services::reward::init_default_tasks_if_empty();
+    
+    // Initialize admin if needed
+    auth::init_admin_if_empty();
+    
+    // Initialize cycles monitoring
+    services::cycles::init_cycles_monitoring();
+    
+    ic_cdk::println!("Post-upgrade hook completed");
 }
 
 ic_cdk::export_candid!();

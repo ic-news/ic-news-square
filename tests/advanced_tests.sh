@@ -23,14 +23,26 @@ test_create_custom_task() {
             completion_criteria = \"Complete the custom test task\";
             task_type = variant { OneTime };
             points_reward = 75 : nat64;
-            expiration_time = null;
             canister_id = principal \"$CANISTER_ID\";
             start_time = null;
-            requirements = record {
-                min_level = 0 : nat64;
-                required_tokens = vec {};
-                required_nfts = vec {};
-                custom_requirements = vec {};
+            end_time = null;
+            requirements = opt record {
+                required_tokens = opt vec { \"IC\" };
+                required_nfts = opt vec { \"IC News NFT\" };
+                social_interaction = opt record {
+                    share_count = opt (1 : nat64);
+                    like_count = opt (2 : nat64);
+                    follow_count = opt (3 : nat64);
+                };
+                login_streak = opt record {
+                    days_required = 2 : nat64;
+                };
+                content_creation = opt record {
+                    comment_count = opt (1 : nat64);
+                    post_count = opt (1 : nat64);
+                    article_count = opt (1 : nat64);
+                };
+                custom_requirements = opt vec { \"Custom requirement 1\" };
             };
         }
     )"
@@ -111,14 +123,26 @@ test_task_with_expiration() {
             completion_criteria = \"Complete before expiration\";
             task_type = variant { OneTime };
             points_reward = 50 : nat64;
-            end_time = opt $expiration_nanos;
             canister_id = principal \"$CANISTER_ID\";
             start_time = null;
-            requirements = record {
-                min_level = 0 : nat64;
-                required_tokens = vec {};
-                required_nfts = vec {};
-                custom_requirements = vec {};
+            end_time = opt $expiration_nanos;
+            requirements = opt record {
+                required_tokens = opt vec { \"IC\" };
+                required_nfts = opt vec { \"IC News NFT\" };
+                social_interaction = opt record {
+                    share_count = opt (1 : nat64);
+                    like_count = opt (2 : nat64);
+                    follow_count = opt (3 : nat64);
+                };
+                login_streak = opt record {
+                    days_required = 2 : nat64;
+                };
+                content_creation = opt record {
+                    comment_count = opt (1 : nat64);
+                    post_count = opt (1 : nat64);
+                    article_count = opt (1 : nat64);
+                };
+                custom_requirements = opt vec { \"Custom requirement 1\" };
             };
         }
     )"
@@ -176,14 +200,26 @@ test_task_with_expiration() {
             completion_criteria = \"Complete before expiration\";
             task_type = variant { OneTime };
             points_reward = 50 : nat64;
-            end_time = opt $expiration_nanos;
             canister_id = principal \"$CANISTER_ID\";
             start_time = null;
-            requirements = record {
-                min_level = 0 : nat64;
-                required_tokens = vec {};
-                required_nfts = vec {};
-                custom_requirements = vec {};
+            end_time = opt $expiration_nanos;
+            requirements = opt record {
+                required_tokens = opt vec { \"IC\" };
+                required_nfts = opt vec { \"IC News NFT\" };
+                social_interaction = opt record {
+                    share_count = opt (1 : nat64);
+                    like_count = opt (2 : nat64);
+                    follow_count = opt (3 : nat64);
+                };
+                login_streak = opt record {
+                    days_required = 2 : nat64;
+                };
+                content_creation = opt record {
+                    comment_count = opt (1 : nat64);
+                    post_count = opt (1 : nat64);
+                    article_count = opt (1 : nat64);
+                };
+                custom_requirements = opt vec { \"Custom requirement 1\" };
             };
         }
     )"
@@ -239,14 +275,26 @@ test_task_chaining() {
             completion_criteria = \"Complete to unlock task 2\";
             task_type = variant { OneTime };
             points_reward = 25 : nat64;
-            expiration_time = null;
             canister_id = principal \"$CANISTER_ID\";
             start_time = null;
-            requirements = record {
-                min_level = 0 : nat64;
-                required_tokens = vec {};
-                required_nfts = vec {};
-                custom_requirements = vec {};
+            end_time = null;
+            requirements = opt record {
+                required_tokens = opt vec { \"IC\" };
+                required_nfts = opt vec { \"IC News NFT\" };
+                social_interaction = opt record {
+                    share_count = opt (1 : nat64);
+                    like_count = opt (2 : nat64);
+                    follow_count = opt (3 : nat64);
+                };
+                login_streak = opt record {
+                    days_required = 2 : nat64;
+                };
+                content_creation = opt record {
+                    comment_count = opt (1 : nat64);
+                    post_count = opt (1 : nat64);
+                    article_count = opt (1 : nat64);
+                };
+                custom_requirements = opt vec { \"Custom requirement 1\" };
             };
         }
     )"
@@ -263,14 +311,26 @@ test_task_chaining() {
             completion_criteria = \"Complete to unlock task 3\";
             task_type = variant { OneTime };
             points_reward = 50 : nat64;
-            expiration_time = null;
             canister_id = principal \"$CANISTER_ID\";
             start_time = null;
-            requirements = record {
-                min_level = 0 : nat64;
-                required_tokens = vec {};
-                required_nfts = vec {};
-                custom_requirements = vec {};
+            end_time = null;
+            requirements = opt record {
+                required_tokens = opt vec { \"IC\" };
+                required_nfts = opt vec { \"IC News NFT\" };
+                social_interaction = opt record {
+                    share_count = opt (1 : nat64);
+                    like_count = opt (2 : nat64);
+                    follow_count = opt (3 : nat64);
+                };
+                login_streak = opt record {
+                    days_required = 2 : nat64;
+                };
+                content_creation = opt record {
+                    comment_count = opt (1 : nat64);
+                    post_count = opt (1 : nat64);
+                    article_count = opt (1 : nat64);
+                };
+                custom_requirements = opt vec { \"Custom requirement 1\" };
             };
         }
     )"
@@ -287,14 +347,26 @@ test_task_chaining() {
             completion_criteria = \"Complete the chain\";
             task_type = variant { OneTime };
             points_reward = 100 : nat64;
-            expiration_time = null;
             canister_id = principal \"$CANISTER_ID\";
             start_time = null;
-            requirements = record {
-                min_level = 0 : nat64;
-                required_tokens = vec {};
-                required_nfts = vec {};
-                custom_requirements = vec {};
+            end_time = null;
+            requirements = opt record {
+                required_tokens = opt vec { \"IC\" };
+                required_nfts = opt vec { \"IC News NFT\" };
+                social_interaction = opt record {
+                    share_count = opt (1 : nat64);
+                    like_count = opt (2 : nat64);
+                    follow_count = opt (3 : nat64);
+                };
+                login_streak = opt record {
+                    days_required = 2 : nat64;
+                };
+                content_creation = opt record {
+                    comment_count = opt (1 : nat64);
+                    post_count = opt (1 : nat64);
+                    article_count = opt (1 : nat64);
+                };
+                custom_requirements = opt vec { \"Custom requirement 1\" };
             };
         }
     )"
@@ -437,14 +509,16 @@ test_bulk_task_operations() {
                 points_reward = $((20 * i)) : nat64;
                 task_type = variant { OneTime };
                 completion_criteria = \"Complete bulk task $i\";
-                expiration_time = null;
                 canister_id = principal \"$CANISTER_ID\";
                 start_time = null;
-                requirements = record {
-                    min_level = 0 : nat64;
-                    required_tokens = vec {};
-                    required_nfts = vec {};
-                    custom_requirements = vec {};
+                end_time = null;
+                requirements = opt record {
+                    social_interaction = null;
+                    required_tokens = null;
+                    required_nfts = null;
+                    login_streak = null;
+                    custom_requirements = null;
+                    content_creation = null;
                 };
             }
         )"
@@ -545,23 +619,59 @@ test_daily_checkin() {
     
     switch_identity $USER1
     local principal=$(get_principal)
-    # Perform daily check-in (using complete_task as a workaround since daily_checkin doesn't exist)
-    echo -e "${YELLOW}Note: daily_checkin method not available, using complete_task with daily_checkin task as workaround${NC}"
     
-    local complete_task_request="(
-        record {
-            task_id = \"daily_checkin\";
-            proof = opt \"checkin_proof\";
-        }
-    )"
+    # Get user rewards before check-in
+    echo -e "${YELLOW}Getting user rewards before check-in${NC}"
+    local rewards_before=$($DFX get_user_rewards)
     
-    local result=$($DFX complete_task "$complete_task_request")
+    # Extract points before check-in
+    local points_before=0
+    if [[ $rewards_before == *"points"* ]]; then
+        # Extract points value using regex
+        points_before=$(echo "$rewards_before" | grep -o 'points = [0-9]\+' | grep -o '[0-9]\+')
+        echo -e "${YELLOW}Points before check-in: $points_before${NC}"
+    else
+        echo -e "${YELLOW}No points found before check-in${NC}"
+    fi
+    
+    # Perform daily check-in using the daily_checkin method from the external canister
+    echo -e "${YELLOW}Performing daily check-in using external canister: $DAILY_CHECKIN_CANISTER_ID${NC}"
+    
+    local result=$(dfx canister call $DAILY_CHECKIN_CANISTER_ID claim_daily_check_in "()")
     check_result "$result" "Daily check-in" true
+    
+    # Get user rewards after check-in
+    echo -e "${YELLOW}Getting user rewards after check-in${NC}"
+    local rewards_after=$(dfx canister call $DAILY_CHECKIN_CANISTER_ID get_user_rewards "(principal \"$principal\")")
+    
+    # Extract points after check-in
+    local points_after=0
+    if [[ $rewards_after == *"points"* ]]; then
+        # Extract points value using regex
+        points_after=$(echo "$rewards_after" | grep -o 'points = [0-9]\+' | grep -o '[0-9]\+')
+        echo -e "${YELLOW}Points after check-in: $points_after${NC}"
+        
+        # Verify points increased
+        if (( points_after > points_before )); then
+            echo -e "${GREEN}Success: Points increased after check-in (Before: $points_before, After: $points_after)${NC}"
+        else
+            echo -e "${RED}Failed: Points did not increase after check-in (Before: $points_before, After: $points_after)${NC}"
+        fi
+    else
+        echo -e "${RED}Failed: No points found after check-in${NC}"
+    fi
+    
+    # Verify completed tasks in rewards
+    if [[ $rewards_after == *"daily_checkin"* ]]; then
+        echo -e "${GREEN}Success: daily_checkin task found in completed tasks${NC}"
+    else
+        echo -e "${RED}Failed: daily_checkin task not found in completed tasks${NC}"
+    fi
     
     # Try to check in again (should fail)
     echo -e "${YELLOW}Attempting second check-in${NC}"
     
-    local result=$($DFX complete_task "$complete_task_request")
+    local result=$(dfx canister call $DAILY_CHECKIN_CANISTER_ID claim_daily_check_in "()")
     
     if [[ $result == *"Err"* ]] && [[ $result == *"already"* ]]; then
         echo -e "${GREEN}Expected behavior: Multiple check-ins correctly rejected${NC}"

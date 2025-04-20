@@ -173,49 +173,71 @@ test_admin_reward_allocation() {
     fi
 }
 
-# Test user level progression
-test_user_level_progression() {
-    echo -e "\n${BLUE}Test: User level progression${NC}"
+# Test points accumulation (replaced points progression test)
+test_points_accumulation() {
+    echo -e "\n${BLUE}Test: Points accumulation${NC}"
     
     switch_identity $USER1
     local principal=$(get_principal)
     
-    # Get current level
+    # Get current points
     local rewards_before=$(test_get_user_rewards)
-    local current_level=$(echo "$rewards_before" | grep -o 'level = [0-9]\+' | grep -o '[0-9]\+')
     
-    # Store current level as a simple number without newlines
-    current_level=$(echo "$current_level" | tr -d '\n')
+    # Extract points
+    local current_points=$(echo "$rewards_before" | grep -o '"points"; variant { Nat = [0-9]\+' | grep -o '[0-9]\+')
     
-    echo -e "${YELLOW}Current user level: $current_level${NC}"
+    # Set default if not found
+    if [ -z "$current_points" ]; then
+        current_points=0
+        echo -e "${YELLOW}Warning: Could not extract current points, defaulting to 0${NC}"
+    else
+        # Store current points as a simple number without newlines
+        current_points=$(echo "$current_points" | tr -d '\n')
+    fi
     
-    # Award enough points to trigger a level up
+    echo -e "${YELLOW}Current user points: $current_points${NC}"
+    
+    # Award points
     local admin_identity=${ADMIN_IDENTITY:-$USER1}
     switch_identity $admin_identity
     
     # Store the target principal in a variable first
     local target_principal="$principal"
     
-    # Allocate points to level up
-    local level_up_request="(record { \"principal\" = principal \"$target_principal\"; points = 150 : nat64; reason = \"Level up test\"; reference_id = null })"
+    # Points to add
+    local points_to_add=150
     
-    $DFX award_points "$level_up_request" > /dev/null
+    # Allocate points
+    local points_request="(record { \"principal\" = principal \"$target_principal\"; points = $points_to_add : nat64; reason = \"Points accumulation test\"; reference_id = null })"
     
-    # Check new level
+    $DFX award_points "$points_request" > /dev/null
+    
+    # Check new points
     switch_identity $USER1
     local rewards_after=$(test_get_user_rewards)
-    local new_level=$(echo "$rewards_after" | grep -o 'level = [0-9]\+' | grep -o '[0-9]\+')
     
-    # Clean up new level value
-    new_level=$(echo "$new_level" | tr -d '\n')
+    # Extract new points
+    local new_points=$(echo "$rewards_after" | grep -o '"points"; variant { Nat = [0-9]\+' | grep -o '[0-9]\+')
     
-    echo -e "${YELLOW}New user level: $new_level${NC}"
-    
-    # Fixed comparison syntax
-    if [ "$new_level" -gt "$current_level" ]; then
-        echo -e "${GREEN}User level progression successful: $current_level -> $new_level${NC}"
+    # Set default if not found
+    if [ -z "$new_points" ]; then
+        new_points=0
+        echo -e "${YELLOW}Warning: Could not extract new points, defaulting to 0${NC}"
     else
-        echo -e "${RED}User level did not increase as expected${NC}"
+        # Clean up new points value
+        new_points=$(echo "$new_points" | tr -d '\n')
+    fi
+    
+    echo -e "${YELLOW}New user points: $new_points${NC}"
+    
+    # Expected points
+    local expected_points=$((current_points + points_to_add))
+    
+    # Check if points increased correctly
+    if [ "$new_points" -eq "$expected_points" ]; then
+        echo -e "${GREEN}Points accumulation successful: $current_points -> $new_points (+$points_to_add)${NC}"
+    else
+        echo -e "${RED}Points did not increase as expected. Expected: $expected_points, Got: $new_points${NC}"
     fi
 }
 
@@ -301,10 +323,10 @@ test_multi_user_scenario() {
         record {
             username = \"IC News User 2\";
             handle = \"icnews2\";
-            bio = opt \"Second test user for IC News Square\";
+            bio = \"Second test user for IC News Square\";
             interests = opt vec { \"news\"; \"technology\" };
             social_links = opt vec {};
-            avatar = opt \"https://example.com/avatar2.png\";
+            avatar = \"https://example.com/avatar2.png\";
         }
     )"
     
@@ -378,37 +400,40 @@ run_basic_tests() {
     echo -e "\n${YELLOW}Step 0: Register user${NC}"
     test_register_user
     
-    echo -e "\n${YELLOW}Step 1: Get initial user points${NC}"
+    echo -e "\n${YELLOW}Step 1: Get user profile${NC}"
+    test_get_user_profile
+    
+    echo -e "\n${YELLOW}Step 2: Get initial user points${NC}"
     test_get_user_rewards
     
-    echo -e "\n${YELLOW}Step 2: Get available tasks${NC}"
+    echo -e "\n${YELLOW}Step 3: Get available tasks${NC}"
     test_get_available_tasks
     
-    echo -e "\n${YELLOW}Step 3: Test daily_post task${NC}"
+    echo -e "\n${YELLOW}Step 4: Test daily_post task${NC}"
     test_complete_daily_post_task
     
-    echo -e "\n${YELLOW}Step 4: Test weekly_article task${NC}"
+    echo -e "\n${YELLOW}Step 5: Test weekly_article task${NC}"
     test_complete_weekly_article_task
     
-    echo -e "\n${YELLOW}Step 5: Test social_engagement task${NC}"
+    echo -e "\n${YELLOW}Step 6: Test social_engagement task${NC}"
     test_complete_social_engagement_task
     
-    echo -e "\n${YELLOW}Step 6: Get final user points${NC}"
+    echo -e "\n${YELLOW}Step 7: Get final user points${NC}"
     test_get_user_rewards
     
-    echo -e "\n${YELLOW}Step 7: Test task repetition${NC}"
+    echo -e "\n${YELLOW}Step 8: Test task repetition${NC}"
     test_task_repetition
     
-    echo -e "\n${YELLOW}Step 8: Test admin reward allocation${NC}"
+    echo -e "\n${YELLOW}Step 9: Test admin reward allocation${NC}"
     test_admin_reward_allocation
     
-    echo -e "\n${YELLOW}Step 9: Test user level progression${NC}"
-    test_user_level_progression
+    echo -e "\n${YELLOW}Step 10: Test points accumulation${NC}"
+    test_points_accumulation
     
-    echo -e "\n${YELLOW}Step 10: Test error handling${NC}"
+    echo -e "\n${YELLOW}Step 11: Test error handling${NC}"
     test_error_handling
     
-    echo -e "\n${YELLOW}Step 11: Test multi-user scenario${NC}"
+    echo -e "\n${YELLOW}Step 12: Test multi-user scenario${NC}"
     test_multi_user_scenario
     
     echo -e "\n${GREEN}=== Basic tests completed ===${NC}"
@@ -421,6 +446,9 @@ run_specific_basic_test() {
     case $test_name in
         "register")
             test_register_user
+            ;;
+        "user_profile")
+            test_get_user_profile
             ;;
         "user_rewards")
             test_get_user_rewards
@@ -443,8 +471,8 @@ run_specific_basic_test() {
         "admin_reward")
             test_admin_reward_allocation
             ;;
-        "level_progression")
-            test_user_level_progression
+        "points_accumulation")
+            test_points_accumulation
             ;;
         "error_handling")
             test_error_handling

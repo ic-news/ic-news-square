@@ -9,6 +9,16 @@ pub fn init_admin() {
     });
 }
 
+pub fn init_admin_if_empty() {
+    STORAGE.with(|storage| {
+        let mut store = storage.borrow_mut();
+        if store.admin.is_none() {
+            ic_cdk::println!("Initializing admin as caller");
+            store.admin = Some(caller());
+        }
+    });
+}
+
 pub fn is_admin() -> Result<(), String> {
     let caller = caller();
     STORAGE.with(|storage| {

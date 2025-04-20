@@ -5,12 +5,27 @@ use ic_cdk_macros::*;
 use std::cell::RefCell;
 use std::collections::HashMap;
 
+// Import Value enum for flexible data representation
+#[derive(CandidType, Deserialize, Clone, Debug)]
+pub enum Value {
+    Int(i64),
+    Nat(u64),
+    Float(f64),
+    Text(String),
+    Bool(bool),
+    Blob(Vec<u8>),
+    Array(Vec<Value>),
+    Map(Vec<(String, Value)>),
+    Principal(Principal),
+    Null,
+}
+
 // Storage for the daily check-in task
 thread_local! {
     static STORAGE: RefCell<DailyCheckInStorage> = RefCell::new(DailyCheckInStorage::default());
 }
 
-#[derive(Default)]
+#[derive(Default, Clone, CandidType, Deserialize)]
 struct DailyCheckInStorage {
     // Map of user principal to their last check-in timestamp
     user_checkins: HashMap<Principal, u64>,
@@ -336,11 +351,73 @@ fn get_checkin_status(user: Principal) -> HashMap<String, String> {
 
 // Get user points history
 #[query]
-fn get_user_rewards(user: Principal) -> Vec<PointsTransaction> {
+fn get_user_rewards(user: Principal) -> HashMap<String, Value> {
+    let mut result = HashMap::new();
+    
     STORAGE.with(|storage| {
         let storage = storage.borrow();
-        storage.points_history.get(&user).cloned().unwrap_or_default()
-    })
+        
+        // Get user points
+        let points = storage.user_points.get(&user).cloned().unwrap_or(0);
+        result.insert("points".to_string(), Value::Nat(points));
+        
+        // Get consecutive days
+        let consecutive_days = storage.consecutive_days.get(&user).cloned().unwrap_or(0);
+        result.insert("consecutive_days".to_string(), Value::Nat(consecutive_days));
+        
+        // Get last check-in timestamp
+        if let Some(last_checkin) = storage.user_checkins.get(&user) {
+            result.insert("last_checkin".to_string(), Value::Nat(*last_checkin));
+            
+            // Calculate if user can check in today
+            let now = time() / 1_000_000;
+            let today_start = now - (now % SECONDS_IN_DAY);
+            let last_checkin_day = last_checkin - (last_checkin % SECONDS_IN_DAY);
+            let has_checked_in_today = last_checkin_day == today_start;
+            
+            result.insert("can_checkin_today".to_string(), Value::Bool(!has_checked_in_today));
+            
+            if has_checked_in_today {
+                let next_claim_time = today_start + SECONDS_IN_DAY;
+                result.insert("next_claim_available_at".to_string(), Value::Nat(next_claim_time));
+            }
+        } else {
+            // User has never checked in
+            result.insert("can_checkin_today".to_string(), Value::Bool(true));
+        }
+        
+        // Get points history
+        if let Some(history) = storage.points_history.get(&user) {
+            result.insert("points_history_count".to_string(), Value::Nat(history.len() as u64));
+            
+            // Add latest transaction if available
+            if !history.is_empty() {
+                let latest = &history[history.len() - 1];
+                result.insert("latest_transaction_amount".to_string(), Value::Int(latest.amount));
+                result.insert("latest_transaction_reason".to_string(), Value::Text(latest.reason.clone()));
+                result.insert("latest_transaction_timestamp".to_string(), Value::Nat(latest.timestamp));
+            }
+            
+            // Add full points history
+            let history_entries: Vec<Value> = history.iter().map(|transaction| {
+                let mut entry = Vec::new();
+                entry.push(("amount".to_string(), Value::Int(transaction.amount)));
+                entry.push(("reason".to_string(), Value::Text(transaction.reason.clone())));
+                entry.push(("timestamp".to_string(), Value::Nat(transaction.timestamp)));
+                if let Some(ref_id) = &transaction.reference_id {
+                    entry.push(("reference_id".to_string(), Value::Text(ref_id.clone())));
+                }
+                Value::Map(entry)
+            }).collect();
+            
+            result.insert("points_history".to_string(), Value::Array(history_entries));
+        } else {
+            result.insert("points_history_count".to_string(), Value::Nat(0));
+            result.insert("points_history".to_string(), Value::Array(vec![]));
+        }
+    });
+    
+    result
 }
 
 // Reset a user's check-in streak (admin function)
@@ -496,6 +573,91 @@ fn get_admins() -> Vec<Principal> {
         let storage = storage.borrow();
         storage.admins.clone()
     })
+}
+
+// State management for canister upgrades
+#[pre_upgrade]
+fn pre_upgrade() {
+    ic_cdk::println!("Starting pre-upgrade hook for daily_checkin_task");
+    save_state_for_upgrade();
+    ic_cdk::println!("Pre-upgrade hook completed");
+}
+
+#[post_upgrade]
+fn post_upgrade() {
+    ic_cdk::println!("Starting post-upgrade hook for daily_checkin_task");
+    
+    // Restore state
+    restore_state_after_upgrade();
+    
+    ic_cdk::println!("Post-upgrade hook completed");
+}
+
+// Save state to stable storage before canister upgrade
+fn save_state_for_upgrade() {
+    use ic_cdk::storage::stable_save;
+    
+    STORAGE.with(|storage| {
+        let storage_data = storage.borrow();
+        
+        // Save storage data
+        match stable_save((storage_data.clone(),)) {
+            Ok(_) => ic_cdk::println!("Successfully saved daily check-in state"),
+            Err(e) => {
+                let error_msg = format!("Failed to save daily check-in state: {:?}", e);
+                ic_cdk::println!("{}", error_msg);
+                ic_cdk::trap(&error_msg);
+            }
+        }
+    });
+}
+
+// Restore state from stable storage after canister upgrade
+fn restore_state_after_upgrade() {
+    use ic_cdk::storage::stable_restore;
+    
+    // Try to restore the state
+    let restore_result: Result<(DailyCheckInStorage,), String> = stable_restore();
+    
+    match restore_result {
+        Ok((storage_data,)) => {
+            STORAGE.with(|storage| {
+                *storage.borrow_mut() = storage_data;
+            });
+            
+            // Log some stats about the restored data
+            STORAGE.with(|storage| {
+                let storage = storage.borrow();
+                ic_cdk::println!("Restored daily check-in state: {} users, {} admins", 
+                               storage.user_checkins.len(),
+                               storage.admins.len());
+            });
+        },
+        Err(e) => {
+            let error_msg = format!("Failed to restore daily check-in state: {:?}", e);
+            ic_cdk::println!("{}", error_msg);
+            ic_cdk::println!("Starting with empty state");
+            
+            // Initialize with default state
+            let caller_principal = caller();
+            STORAGE.with(|storage| {
+                let mut storage = storage.borrow_mut();
+                
+                // Add the deployer as an admin
+                storage.admins.push(caller_principal);
+                
+                // Set default task configuration
+                storage.task_config = TaskConfig {
+                    title: "Daily Check-in".to_string(),
+                    description: "Check in daily to earn points and build a streak".to_string(),
+                    base_points: DAILY_CHECK_IN_POINTS,
+                    max_consecutive_bonus_days: MAX_CONSECUTIVE_BONUS_DAYS,
+                    consecutive_days_bonus_multiplier: CONSECUTIVE_DAYS_BONUS_MULTIPLIER,
+                    enabled: true,
+                };
+            });
+        }
+    }
 }
 
 ic_cdk::export_candid!();

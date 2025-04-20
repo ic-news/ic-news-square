@@ -69,15 +69,51 @@ test_register_user() {
         record {
             username = \"IC News User\";
             handle = \"icnews\";
-            bio = opt \"Test user for IC News Square\";
+            bio = \"Test user for IC News Square\";
             interests = opt vec { \"news\"; \"technology\"; \"blockchain\" };
             social_links = opt vec {};
-            avatar = opt \"https://example.com/avatar.png\";
+            avatar = \"https://example.com/avatar.png\";
         }
     )"
     
     local result=$($DFX register_user "$register_user_request")
     check_result "$result" "Registering user" true
+}
+
+# Test get_user_profile API
+test_get_user_profile() {
+    echo -e "\n${BLUE}Test: Getting user profile${NC}"
+    
+    switch_identity $USER1
+    local principal=$(get_principal)
+    
+    echo -e "${YELLOW}Getting profile for user: $principal${NC}"
+    
+    # Call get_user_profile API
+    local result=$($DFX get_user_profile)
+    check_result "$result" "Getting user profile" true
+    
+    # Check if the response is properly structured (data is an object, not an array)
+    if [[ $result == *"data = opt record"* && $result != *"data = opt vec"* ]]; then
+        echo -e "${GREEN}Response format check: Success - Data is an object (record), not an array${NC}"
+    else
+        echo -e "${RED}Response format check: Failed - Data format is unexpected${NC}"
+        echo -e "${RED}$result${NC}"
+    fi
+    
+    # Additional check to ensure data is not returned as an array
+    if [[ $result == *"data = opt vec"* ]]; then
+        echo -e "${RED}ERROR: Data is returned as an array (vec) instead of an object (record)${NC}"
+        echo -e "${RED}$result${NC}"
+    fi
+    
+    # Verify specific fields exist in the response
+    if [[ $result == *"username"* && $result == *"handle"* && $result == *"bio"* ]]; then
+        echo -e "${GREEN}Field verification: Success - Required fields found in response${NC}"
+    else
+        echo -e "${RED}Field verification: Failed - Some required fields are missing${NC}"
+        echo -e "${RED}$result${NC}"
+    fi
 }
 
 # Test getting current user points
@@ -283,7 +319,7 @@ run_specific_test() {
     
     # Check if it's a basic test
     case $test_name in
-        "register"|"user_rewards"|"available_tasks"|"daily_post"|"weekly_article"|"social_engagement"|"task_repetition"|"admin_reward"|"level_progression"|"error_handling"|"multi_user")
+        "register"|"user_profile"|"user_rewards"|"available_tasks"|"daily_post"|"weekly_article"|"social_engagement"|"task_repetition"|"admin_reward"|"points_accumulation"|"error_handling"|"multi_user")
             run_specific_basic_test "$test_name"
             ;;
         "custom_task"|"expiration"|"chaining"|"reset"|"bulk"|"leaderboard"|"checkin")
@@ -291,7 +327,7 @@ run_specific_test() {
             ;;
         *)
             echo -e "${RED}Unknown test: $test_name${NC}"
-            echo -e "Available basic tests: register, user_rewards, available_tasks, daily_post, weekly_article, social_engagement, task_repetition, admin_reward, level_progression, error_handling, multi_user"
+            echo -e "Available basic tests: register, user_profile, user_rewards, available_tasks, daily_post, weekly_article, social_engagement, task_repetition, admin_reward, points_accumulation, error_handling, multi_user"
             echo -e "Available advanced tests: custom_task, expiration, chaining, reset, bulk, leaderboard, checkin"
             exit 1
             ;;

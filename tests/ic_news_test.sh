@@ -11,6 +11,8 @@ BLUE='\033[0;34m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # No color
 
+DAILY_CHECKIN_CANISTER_ID="bkyz2-fmaaa-aaaaa-qaaaq-cai"
+
 echo -e "${BLUE}=== IC News Square Unified Test Suite ===${NC}"
 
 # Check if dfx is installed
@@ -20,7 +22,7 @@ if ! command -v dfx &> /dev/null; then
 fi
 
 # Configuration variables
-CANISTER_ID="be2us-64aaa-aaaaa-qaabq-cai" # Local canister ID by default
+CANISTER_ID="br5f7-7uaaa-aaaaa-qaaca-cai" # Local canister ID by default
 NETWORK="local" # Default network
 DFX="dfx canister --network $NETWORK call $CANISTER_ID" # Simplified call command
 
@@ -49,8 +51,8 @@ show_help() {
     echo -e "  -u, --user USER            Set primary test user identity"
     echo -e "  -v, --verbose              Enable verbose output"
     echo -e "\nAvailable basic tests:"
-    echo -e "  register, user_rewards, available_tasks, daily_post, weekly_article,"
-    echo -e "  social_engagement, task_repetition, admin_reward, level_progression,"
+    echo -e "  register, user_profile, user_rewards, available_tasks, daily_post, weekly_article,"
+    echo -e "  social_engagement, task_repetition, admin_reward, points_accumulation,"
     echo -e "  error_handling, multi_user"
     echo -e "\nAvailable advanced tests:"
     echo -e "  custom_task, expiration, chaining, reset, bulk, leaderboard, checkin"

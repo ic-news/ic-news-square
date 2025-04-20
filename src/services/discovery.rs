@@ -9,6 +9,50 @@ use crate::models::error::SquareResult;
 use crate::storage::STORAGE;
 use crate::utils::error_handler::*;
 
+// Helper function to calculate trending score for content
+fn calculate_trending_score(content_id: &str, storage: &crate::storage::Storage, now: u64, one_day: u64) -> f64 {
+    // Get engagement counts
+    let likes = storage.likes.get(content_id).map_or(0, |likes| likes.len());
+    
+    // Get comments with timestamps
+    let comments: Vec<u64> = storage.comments.values()
+        .filter(|c| c.parent_id == content_id)
+        .map(|c| c.created_at)
+        .collect();
+    
+    // Get shares count
+    let shares = storage.shares.get(content_id).copied().unwrap_or(0) as usize;
+    
+    // Calculate recency-weighted engagement
+    let mut score = 0.0;
+    
+    // Weight for each type of engagement
+    let like_weight = 1.0;
+    let comment_weight = 2.0;
+    let share_weight = 3.0;
+    
+    // Add weighted likes score
+    score += likes as f64 * like_weight;
+    
+    // Add weighted comments score with time decay
+    for comment_time in comments {
+        let time_diff = if now > comment_time {
+            (now - comment_time) as f64 / one_day as f64
+        } else {
+            0.0
+        };
+        
+        // Apply time decay: more recent comments have higher weight
+        let time_factor = 1.0 / (1.0 + time_diff);
+        score += comment_weight * time_factor;
+    }
+    
+    // Add weighted shares score
+    score += shares as f64 * share_weight;
+    
+    score
+}
+
 // Discovery API implementation
 pub fn discover_content(request: DiscoverContentRequest) -> SquareResult<FeedResponse> {
     const MODULE: &str = "services::discovery";
@@ -21,6 +65,8 @@ pub fn discover_content(request: DiscoverContentRequest) -> SquareResult<FeedRes
     let content_types = request.content_types.unwrap_or_else(|| vec![ContentType::Post, ContentType::Article]);
     let tags = request.tags;
     let pagination = request.pagination;
+    let sort_by = request.sort_by.unwrap_or(SortOption::Latest);
+    let filter = request.filter;
     
     let mut posts = vec![];
     let mut articles = vec![];
@@ -37,6 +83,7 @@ pub fn discover_content(request: DiscoverContentRequest) -> SquareResult<FeedRes
             
             for (id, post) in &storage.posts {
                 if post.status == crate::storage::ContentStatus::Active {
+                    // Check if post matches tags filter
                     let matches_tags = if let Some(ref tag_list) = tags {
                         // Only include posts with matching tags
                         post.hashtags.iter().any(|tag| tag_list.contains(tag))
@@ -45,17 +92,106 @@ pub fn discover_content(request: DiscoverContentRequest) -> SquareResult<FeedRes
                         true
                     };
                     
-                    if matches_tags {
+                    // Apply additional filters if specified
+                    let matches_filter = if let Some(ref content_filter) = filter {
+                        // Check hashtag filter
+                        let matches_hashtag = if let Some(ref hashtag) = content_filter.hashtag {
+                            post.hashtags.contains(&hashtag)
+                        } else {
+                            true
+                        };
+                        
+                        // Check token mention filter
+                        let matches_token = if let Some(ref token) = content_filter.token_mention {
+                            post.token_mentions.contains(&token)
+                        } else {
+                            true
+                        };
+                        
+                        // Check time range filters
+                        let matches_time_after = if let Some(created_after) = content_filter.created_after {
+                            post.created_at >= created_after
+                        } else {
+                            true
+                        };
+                        
+                        let matches_time_before = if let Some(created_before) = content_filter.created_before {
+                            post.created_at <= created_before
+                        } else {
+                            true
+                        };
+                        
+                        // Check author filter
+                        let matches_author = if let Some(author) = content_filter.author {
+                            post.author == author
+                        } else {
+                            true
+                        };
+                        
+                        // All filters must match
+                        matches_hashtag && matches_token && matches_time_after && matches_time_before && matches_author
+                    } else {
+                        true
+                    };
+                    
+                    if matches_tags && matches_filter {
                         matching_posts.push(id.clone());
                     }
                 }
             }
             
-            // Sort by creation date (newest first)
+            // Sort based on the specified sort option
             matching_posts.sort_by(|a, b| {
                 let post_a = storage.posts.get(a).unwrap();
                 let post_b = storage.posts.get(b).unwrap();
-                post_b.created_at.cmp(&post_a.created_at)
+                
+                match sort_by {
+                    SortOption::Latest => {
+                        // Sort by creation date (newest first)
+                        post_b.created_at.cmp(&post_a.created_at)
+                    },
+                    SortOption::MostLiked => {
+                        // Sort by likes count
+                        let likes_a = storage.likes.get(a).map_or(0, |likes| likes.len());
+                        let likes_b = storage.likes.get(b).map_or(0, |likes| likes.len());
+                        
+                        // Primary sort by likes (descending), secondary by date (newest first)
+                        likes_b.cmp(&likes_a).then(post_b.created_at.cmp(&post_a.created_at))
+                    },
+                    SortOption::MostCommented => {
+                        // Sort by comments count
+                        let comments_a = storage.comments.values()
+                            .filter(|c| c.parent_id == *a && c.parent_type == crate::storage::ParentType::Post)
+                            .count();
+                        
+                        let comments_b = storage.comments.values()
+                            .filter(|c| c.parent_id == *b && c.parent_type == crate::storage::ParentType::Post)
+                            .count();
+                        
+                        // Primary sort by comments (descending), secondary by date (newest first)
+                        comments_b.cmp(&comments_a).then(post_b.created_at.cmp(&post_a.created_at))
+                    },
+                    SortOption::MostShared => {
+                        // Sort by shares count
+                        let shares_a = storage.shares.get(a).copied().unwrap_or(0) as usize;
+                        let shares_b = storage.shares.get(b).copied().unwrap_or(0) as usize;
+                        
+                        // Primary sort by shares (descending), secondary by date (newest first)
+                        shares_b.cmp(&shares_a).then(post_b.created_at.cmp(&post_a.created_at))
+                    },
+                    SortOption::Trending => {
+                        // Sort by recent engagement (weighted by recency)
+                        let now = time();
+                        let one_day = 24 * 60 * 60 * 1_000_000_000; // 1 day in nanoseconds
+                        
+                        // Calculate trending score based on recent engagement and time decay
+                        let score_a = calculate_trending_score(a, &storage, now, one_day);
+                        let score_b = calculate_trending_score(b, &storage, now, one_day);
+                        
+                        // Sort by trending score (descending)
+                        score_b.partial_cmp(&score_a).unwrap_or(std::cmp::Ordering::Equal)
+                    }
+                }
             });
             
             // Store total count for pagination
@@ -105,6 +241,10 @@ pub fn discover_content(request: DiscoverContentRequest) -> SquareResult<FeedRes
                             comments_count,
                             shares_count,
                             author_info,
+                            news_reference: post.news_reference.clone().map(|nr| crate::models::content::NewsReferenceResponse {
+                                metadata: nr.metadata,
+                                canister_id: nr.canister_id,
+                            }),
                         });
                     }
                 }
@@ -118,6 +258,7 @@ pub fn discover_content(request: DiscoverContentRequest) -> SquareResult<FeedRes
             
             for (id, article) in &storage.articles {
                 if article.status == crate::storage::ContentStatus::Active {
+                    // Check if article matches tags filter
                     let matches_tags = if let Some(ref tag_list) = tags {
                         // Only include articles with matching tags
                         article.hashtags.iter().any(|tag| tag_list.contains(tag))
@@ -126,17 +267,106 @@ pub fn discover_content(request: DiscoverContentRequest) -> SquareResult<FeedRes
                         true
                     };
                     
-                    if matches_tags {
+                    // Apply additional filters if specified
+                    let matches_filter = if let Some(ref content_filter) = filter {
+                        // Check hashtag filter
+                        let matches_hashtag = if let Some(ref hashtag) = content_filter.hashtag {
+                            article.hashtags.contains(&hashtag)
+                        } else {
+                            true
+                        };
+                        
+                        // Check token mention filter
+                        let matches_token = if let Some(ref token) = content_filter.token_mention {
+                            article.token_mentions.contains(&token)
+                        } else {
+                            true
+                        };
+                        
+                        // Check time range filters
+                        let matches_time_after = if let Some(created_after) = content_filter.created_after {
+                            article.created_at >= created_after
+                        } else {
+                            true
+                        };
+                        
+                        let matches_time_before = if let Some(created_before) = content_filter.created_before {
+                            article.created_at <= created_before
+                        } else {
+                            true
+                        };
+                        
+                        // Check author filter
+                        let matches_author = if let Some(author) = content_filter.author {
+                            article.author == author
+                        } else {
+                            true
+                        };
+                        
+                        // All filters must match
+                        matches_hashtag && matches_token && matches_time_after && matches_time_before && matches_author
+                    } else {
+                        true
+                    };
+                    
+                    if matches_tags && matches_filter {
                         matching_articles.push(id.clone());
                     }
                 }
             }
             
-            // Sort by creation date (newest first)
+            // Sort based on the specified sort option
             matching_articles.sort_by(|a, b| {
                 let article_a = storage.articles.get(a).unwrap();
                 let article_b = storage.articles.get(b).unwrap();
-                article_b.created_at.cmp(&article_a.created_at)
+                
+                match sort_by {
+                    SortOption::Latest => {
+                        // Sort by creation date (newest first)
+                        article_b.created_at.cmp(&article_a.created_at)
+                    },
+                    SortOption::MostLiked => {
+                        // Sort by likes count
+                        let likes_a = storage.likes.get(a).map_or(0, |likes| likes.len());
+                        let likes_b = storage.likes.get(b).map_or(0, |likes| likes.len());
+                        
+                        // Primary sort by likes (descending), secondary by date (newest first)
+                        likes_b.cmp(&likes_a).then(article_b.created_at.cmp(&article_a.created_at))
+                    },
+                    SortOption::MostCommented => {
+                        // Sort by comments count
+                        let comments_a = storage.comments.values()
+                            .filter(|c| c.parent_id == *a && c.parent_type == crate::storage::ParentType::Article)
+                            .count();
+                        
+                        let comments_b = storage.comments.values()
+                            .filter(|c| c.parent_id == *b && c.parent_type == crate::storage::ParentType::Article)
+                            .count();
+                        
+                        // Primary sort by comments (descending), secondary by date (newest first)
+                        comments_b.cmp(&comments_a).then(article_b.created_at.cmp(&article_a.created_at))
+                    },
+                    SortOption::MostShared => {
+                        // Sort by shares count
+                        let shares_a = storage.shares.get(a).copied().unwrap_or(0) as usize;
+                        let shares_b = storage.shares.get(b).copied().unwrap_or(0) as usize;
+                        
+                        // Primary sort by shares (descending), secondary by date (newest first)
+                        shares_b.cmp(&shares_a).then(article_b.created_at.cmp(&article_a.created_at))
+                    },
+                    SortOption::Trending => {
+                        // Sort by recent engagement (weighted by recency)
+                        let now = time();
+                        let one_day = 24 * 60 * 60 * 1_000_000_000; // 1 day in nanoseconds
+                        
+                        // Calculate trending score based on recent engagement and time decay
+                        let score_a = calculate_trending_score(a, &storage, now, one_day);
+                        let score_b = calculate_trending_score(b, &storage, now, one_day);
+                        
+                        // Sort by trending score (descending)
+                        score_b.partial_cmp(&score_a).unwrap_or(std::cmp::Ordering::Equal)
+                    }
+                }
             });
             
             // Store total count for pagination
@@ -185,6 +415,10 @@ pub fn discover_content(request: DiscoverContentRequest) -> SquareResult<FeedRes
                             comments_count,
                             shares_count,
                             author_info,
+                            news_reference: article.news_reference.clone().map(|nr| crate::models::content::NewsReferenceResponse {
+                                metadata: nr.metadata,
+                                canister_id: nr.canister_id,
+                            }),
                         });
                     }
                 }
@@ -207,6 +441,7 @@ pub fn discover_content(request: DiscoverContentRequest) -> SquareResult<FeedRes
     Ok(FeedResponse {
         posts,
         articles,
+        comments: vec![],
         has_more,
         next_offset
     })
@@ -272,13 +507,22 @@ pub fn search_content(request: SearchRequest) -> SquareResult<Vec<SearchResultRe
                         // Create snippet from content
                         let snippet = create_snippet(&post.content, &query);
                         
+                        // Get author social info
+                        let author_info = match crate::services::user::get_user_social_info(post.author, None) {
+                            Ok(info) => info,
+                            Err(_) => {
+                                // If we can't get the social info, skip this result
+                                continue;
+                            }
+                        };
+                        
                         // Add to search results
                         results.push(SearchResultResponse {
                             id: id.clone(),
                             content_type: ContentType::Post,
                             title: None, // Posts don't have titles
                             snippet,
-                            author: post.author,
+                            author: author_info,
                             created_at: post.created_at,
                             relevance_score,
                         });
@@ -322,13 +566,22 @@ pub fn search_content(request: SearchRequest) -> SquareResult<Vec<SearchResultRe
                         // Create snippet from content
                         let snippet = create_snippet(&article.content, &query);
                         
+                        // Get author social info
+                        let author_info = match crate::services::user::get_user_social_info(article.author, None) {
+                            Ok(info) => info,
+                            Err(_) => {
+                                // If we can't get the social info, skip this result
+                                continue;
+                            }
+                        };
+                        
                         // Add to search results
                         results.push(SearchResultResponse {
                             id: id.clone(),
                             content_type: ContentType::Article,
                             title,
                             snippet,
-                            author: article.author,
+                            author: author_info,
                             created_at: article.created_at,
                             relevance_score,
                         });
@@ -350,13 +603,22 @@ pub fn search_content(request: SearchRequest) -> SquareResult<Vec<SearchResultRe
                         // Create snippet from content
                         let snippet = create_snippet(&comment.content, &query);
                         
+                        // Get author social info
+                        let author_info = match crate::services::user::get_user_social_info(comment.author, None) {
+                            Ok(info) => info,
+                            Err(_) => {
+                                // If we can't get the social info, skip this result
+                                continue;
+                            }
+                        };
+                        
                         // Add to search results
                         results.push(SearchResultResponse {
                             id: id.clone(),
                             content_type: ContentType::Comment,
                             title: None,
                             snippet,
-                            author: comment.author,
+                            author: author_info,
                             created_at: comment.created_at,
                             relevance_score,
                         });
@@ -454,12 +716,28 @@ pub fn get_trending_topics(request: GetTrendingTopicsRequest) -> SquareResult<Ve
     STORAGE.with(|storage| {
         let storage = storage.borrow();
         
-        // Get trending topics from storage
+        // Get trending topics from storage and determine trend direction
+        let previous_trending = storage.previous_trending_topics.clone();
+        
         for (topic, count) in &storage.trending_topics {
+            // Determine trend direction by comparing with previous data
+            let trend_direction = if let Some(previous_count) = previous_trending.get(topic) {
+                if *count > *previous_count {
+                    TrendDirection::Rising
+                } else if *count < *previous_count {
+                    TrendDirection::Falling
+                } else {
+                    TrendDirection::Stable
+                }
+            } else {
+                // Topic wasn't in previous trending data
+                TrendDirection::New
+            };
+            
             trending_topics.push(TrendingTopicResponse {
-                name: topic.clone(),
+                topic: topic.clone(),
                 count: *count,
-                trend_direction: TrendDirection::Stable // Simplified implementation
+                trend_direction
             });
         }
     });
@@ -507,7 +785,9 @@ pub fn get_personalized_recommendations(request: PersonalizedRecommendationsRequ
             return discover_content(DiscoverContentRequest {
                 content_types: request.content_types,
                 tags: None,
-                pagination: request.pagination
+                pagination: request.pagination,
+                filter: None,
+                sort_by: None
             });
         },
         principal => principal,
@@ -727,6 +1007,10 @@ pub fn get_personalized_recommendations(request: PersonalizedRecommendationsRequ
                             comments_count,
                             shares_count,
                             author_info,
+                            news_reference: post.news_reference.clone().map(|nr| crate::models::content::NewsReferenceResponse {
+                                metadata: nr.metadata,
+                                canister_id: nr.canister_id,
+                            }),
                         });
                     }
                 }
@@ -894,6 +1178,10 @@ pub fn get_personalized_recommendations(request: PersonalizedRecommendationsRequ
                             comments_count,
                             shares_count,
                             author_info,
+                            news_reference: article.news_reference.clone().map(|nr| crate::models::content::NewsReferenceResponse {
+                                metadata: nr.metadata,
+                                canister_id: nr.canister_id,
+                            }),
                         });
                     }
                 }
@@ -908,6 +1196,7 @@ pub fn get_personalized_recommendations(request: PersonalizedRecommendationsRequ
         Ok(FeedResponse {
             posts,
             articles,
+            comments: vec![],
             has_more,
             next_offset
         })
@@ -1092,7 +1381,10 @@ pub fn update_trending_content() -> SquareResult<()> {
         // Only update if enough time has passed since last update
         if now - storage.last_trending_update > 3600 * 1_000_000_000 { // 1 hour in nanoseconds
             
-            // Update trending topics
+            // Save current trending topics to previous_trending_topics before updating
+            storage.previous_trending_topics = storage.trending_topics.clone();
+            
+            // Update trending topics logic would go here
             // (Implementation details omitted for brevity)
             
             storage.last_trending_update = now;

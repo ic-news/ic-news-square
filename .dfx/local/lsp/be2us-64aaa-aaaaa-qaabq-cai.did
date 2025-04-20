@@ -54,6 +54,7 @@ type ArticleResponse = record {
   hashtags : vec text;
   shares_count : nat64;
   media_urls : vec text;
+  news_reference : opt NewsReferenceRequest;
   created_at : nat64;
   author : principal;
   token_mentions : vec text;
@@ -72,7 +73,7 @@ type CommentResponse = record {
   status : ContentStatus;
   updated_at : nat64;
   content : text;
-  child_comments : vec text;
+  child_comments : vec CommentResponse;
   author_info : UserSocialResponse;
   shares_count : nat64;
   created_at : nat64;
@@ -91,6 +92,19 @@ type CommentsResponse = record {
   has_more : bool;
 };
 type CompleteTaskRequest = record { task_id : text; proof : opt text };
+type ContentCreationRequirement = record {
+  comment_count : opt nat64;
+  article_count : opt nat64;
+  post_count : opt nat64;
+  required_hashtags : opt vec text;
+};
+type ContentFilter = record {
+  hashtag : opt text;
+  token_mention : opt text;
+  created_after : opt nat64;
+  author : opt principal;
+  created_before : opt nat64;
+};
 type ContentModerationRequest = record {
   status : ContentStatus;
   content_id : text;
@@ -105,6 +119,7 @@ type CreateArticleRequest = record {
   content : text;
   hashtags : vec text;
   media_urls : vec text;
+  news_reference : opt NewsReferenceRequest;
   token_mentions : opt vec text;
   visibility : opt ContentVisibility;
 };
@@ -121,6 +136,7 @@ type CreatePostRequest = record {
   hashtags : vec text;
   media_urls : vec text;
   tags : opt vec text;
+  news_reference : opt NewsReferenceRequest;
   token_mentions : opt vec text;
   mentions : opt vec text;
   visibility : opt ContentVisibility;
@@ -135,7 +151,7 @@ type CreateTaskRequest = record {
   completion_criteria : text;
   start_time : opt nat64;
   task_type : TaskType;
-  requirements : TaskRequirements;
+  requirements : opt TaskRequirements;
 };
 type CyclesBalanceResponse = record {
   estimated_days_remaining : nat64;
@@ -172,8 +188,10 @@ type DailyConsumption = record {
   consumption : nat64;
 };
 type DiscoverContentRequest = record {
+  sort_by : opt SortOption;
   pagination : PaginationParams;
   tags : opt vec text;
+  filter : opt ContentFilter;
   content_types : opt vec ParentType;
 };
 type ErrorCode = variant {
@@ -226,6 +244,7 @@ type ErrorContext = record {
 type ErrorSeverity = variant { Error; Info; Critical; Warning };
 type FeedResponse = record {
   articles : vec ArticleResponse;
+  comments : vec CommentResponse;
   posts : vec PostResponse;
   next_offset : nat64;
   has_more : bool;
@@ -253,6 +272,11 @@ type LikesResponse = record {
   content_type : ParentType;
   likes : vec UserLikeInfo;
 };
+type LoginStreakRequirement = record { days_required : nat64 };
+type NewsReferenceRequest = record {
+  metadata : vec record { text; text };
+  canister_id : principal;
+};
 type NotificationPreferences = record {
   shares : bool;
   follows : bool;
@@ -278,12 +302,6 @@ type PersonalizedRecommendationsRequest = record {
   include_similar_to_liked : opt bool;
   content_types : opt vec ParentType;
 };
-type PointsTransaction = record {
-  reference_id : opt text;
-  timestamp : nat64;
-  amount : int64;
-  reason : text;
-};
 type PostResponse = record {
   id : text;
   status : ContentStatus;
@@ -294,6 +312,7 @@ type PostResponse = record {
   shares_count : nat64;
   media_urls : vec text;
   tags : vec text;
+  news_reference : opt NewsReferenceRequest;
   created_at : nat64;
   author : principal;
   token_mentions : vec text;
@@ -307,12 +326,12 @@ type PostsResponse = record {
   next_offset : nat64;
 };
 type RegisterUserRequest = record {
-  bio : opt text;
+  bio : text;
   username : text;
   interests : opt vec text;
   handle : text;
   social_links : opt vec record { text; text };
-  avatar : opt text;
+  avatar : text;
 };
 type ReportContentRequest = record {
   content_id : text;
@@ -345,7 +364,7 @@ type Result_17 = variant { Ok : PostsResponse; Err : SquareError };
 type Result_18 = variant { Ok : SharesResponse; Err : SquareError };
 type Result_19 = variant { Ok : vec TrendingTopicResponse; Err : SquareError };
 type Result_2 = variant { Ok : TaskCompletionResponse; Err : SquareError };
-type Result_20 = variant { Ok : UserRewardsResponse; Err : SquareError };
+type Result_20 = variant { Ok : vec record { text; Value }; Err : SquareError };
 type Result_21 = variant { Ok : vec principal; Err : text };
 type Result_22 = variant { Ok : vec SearchResultResponse; Err : SquareError };
 type Result_3 = variant { Ok : ArticleResponse; Err : SquareError };
@@ -367,12 +386,24 @@ type SearchResultResponse = record {
   relevance_score : float64;
   snippet : text;
   created_at : nat64;
-  author : principal;
+  author : UserSocialResponse;
 };
 type SharesResponse = record {
   content_id : text;
   count : nat64;
   content_type : ParentType;
+};
+type SocialInteractionRequirement = record {
+  share_count : opt nat64;
+  like_count : opt nat64;
+  follow_count : opt nat64;
+};
+type SortOption = variant {
+  MostShared;
+  MostCommented;
+  Trending;
+  MostLiked;
+  Latest;
 };
 type SquareError = variant {
   Enhanced : SquareErrorEnhanced;
@@ -393,18 +424,18 @@ type SquareErrorEnhanced = record {
 };
 type TagType = variant { Custom; Category; Topic; Location };
 type TaskCompletionResponse = record {
-  level_up : bool;
   total_points : nat64;
-  level : nat64;
   message : text;
   success : bool;
   points_earned : nat64;
 };
 type TaskRequirements = record {
-  required_tokens : vec text;
-  required_nfts : vec text;
-  min_level : nat64;
-  custom_requirements : vec text;
+  social_interaction : opt SocialInteractionRequirement;
+  required_tokens : opt vec text;
+  required_nfts : opt vec text;
+  login_streak : opt LoginStreakRequirement;
+  custom_requirements : opt vec text;
+  content_creation : opt ContentCreationRequirement;
 };
 type TaskResponse = record {
   id : text;
@@ -418,9 +449,9 @@ type TaskResponse = record {
   points : nat64;
 };
 type TaskType = variant { OneTime; Weekly; Daily; Monthly; Special };
-type TrendDirection = variant { Stable; Rising; Falling };
+type TrendDirection = variant { New; Stable; Rising; Falling };
 type TrendingTopicResponse = record {
-  name : text;
+  topic : text;
   count : nat64;
   trend_direction : TrendDirection;
 };
@@ -429,6 +460,7 @@ type UpdateArticleRequest = record {
   content : text;
   hashtags : opt vec text;
   media_urls : opt vec text;
+  news_reference : opt NewsReferenceRequest;
   token_mentions : opt vec text;
   visibility : opt ContentVisibility;
 };
@@ -444,6 +476,7 @@ type UpdatePostRequest = record {
   hashtags : opt vec text;
   media_urls : opt vec text;
   tags : opt vec text;
+  news_reference : opt NewsReferenceRequest;
   token_mentions : opt vec text;
   visibility : opt ContentVisibility;
 };
@@ -459,11 +492,15 @@ type UpdateProfileRequest = record {
 type UserLeaderboardItem = record {
   "principal" : principal;
   username : text;
+  last_claim_date : opt nat64;
+  consecutive_daily_logins : nat64;
   rank : nat64;
-  level : nat64;
+  article_count : nat64;
+  post_count : nat64;
   handle : text;
+  followers_count : nat64;
   points : nat64;
-  avatar : opt text;
+  avatar : text;
 };
 type UserLeaderboardResponse = record {
   total_users : nat64;
@@ -483,27 +520,23 @@ type UserPrivacySettings = record {
   profile_visibility : ContentVisibility;
 };
 type UserProfileResponse = record {
-  bio : opt text;
+  bio : text;
   is_following : bool;
-  updated_at : nat64;
+  status : UserStatus;
+  last_login : nat64;
   "principal" : principal;
   username : text;
-  interests : vec text;
+  role : UserRole;
   following_count : nat64;
-  created_at : nat64;
   handle : text;
+  registered_at : nat64;
   followers_count : nat64;
   social_links : vec record { text; text };
-  avatar : opt text;
+  avatar : text;
 };
-type UserRewardsResponse = record {
-  completed_tasks : vec text;
-  points_history : vec PointsTransaction;
-  level : nat64;
-  points : nat64;
-};
+type UserRole = variant { User; Admin; Moderator; Creator };
 type UserSocialResponse = record {
-  bio : opt text;
+  bio : text;
   is_following : bool;
   "principal" : principal;
   username : text;
@@ -511,7 +544,20 @@ type UserSocialResponse = record {
   is_followed_by_caller : bool;
   handle : text;
   followers_count : nat64;
-  avatar : opt text;
+  avatar : text;
+};
+type UserStatus = variant { Active; Suspended; Banned; Restricted };
+type Value = variant {
+  Int : int64;
+  Map : vec record { text; Value };
+  Nat : nat64;
+  Blob : blob;
+  Bool : bool;
+  Null;
+  Text : text;
+  Float : float64;
+  Principal : principal;
+  Array : vec Value;
 };
 service : {
   acknowledge_notification : (nat64) -> (Result);
@@ -566,9 +612,6 @@ service : {
   report_content : (ReportContentRequest) -> (Result);
   search_content : (SearchRequest) -> (Result_22) query;
   share_content : (text, ParentType) -> (Result);
-  test_error_context : () -> (ApiResponse_2) query;
-  test_error_handling : () -> (ApiResponse_1);
-  test_error_recovery_hints : () -> (ApiResponse_2) query;
   unfollow_user : (principal) -> (ApiResponse_1);
   unlike_content : (LikeContentRequest) -> (Result);
   update_article : (UpdateArticleRequest) -> (Result_3);

@@ -27,7 +27,7 @@ struct ErrorRecord {
     timestamp: u64,
 }
 
-/// 错误统计信息
+/// Error statistics
 #[derive(Clone, Debug)]
 struct ErrorStats {
     /// Error code

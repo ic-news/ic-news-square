@@ -4,6 +4,14 @@ use candid::{CandidType, Deserialize, Principal};
 
 use crate::models::reward::TaskDefinition;
 use crate::models::interaction::ContentReport;
+use crate::models::content::NewsReferenceRequest;
+
+// News reference for storage
+#[derive(CandidType, Deserialize, Clone)]
+pub struct NewsReference {
+    pub metadata: Vec<(String, String)>,
+    pub canister_id: Principal,
+}
 
 thread_local! {
     pub static STORAGE: RefCell<Storage> = RefCell::new(Storage::default());
@@ -27,6 +35,7 @@ impl Default for Storage {
             user_articles: HashMap::new(),
             user_comments: HashMap::new(),
             trending_topics: BTreeMap::new(),
+            previous_trending_topics: BTreeMap::new(),
             trending_content: Vec::new(),
             content_counter: 0,
             last_trending_update: 0,
@@ -68,6 +77,7 @@ pub struct Storage {
     
     // Discovery
     pub trending_topics: BTreeMap<String, u64>, // hashtag -> count
+    pub previous_trending_topics: BTreeMap<String, u64>, // previous period hashtag -> count
     pub trending_content: Vec<String>, // content IDs
     
     // Rewards and tasks
@@ -99,6 +109,7 @@ pub struct Post {
     pub updated_at: u64,
     pub status: ContentStatus,
     pub visibility: ContentVisibility,
+    pub news_reference: Option<NewsReference>,
 }
 
 #[derive(CandidType, Deserialize, Clone)]
@@ -113,6 +124,7 @@ pub struct Article {
     pub updated_at: u64,
     pub status: ContentStatus,
     pub visibility: ContentVisibility,
+    pub news_reference: Option<NewsReference>,
 }
 
 #[derive(CandidType, Deserialize, Clone)]
@@ -144,8 +156,8 @@ pub struct UserProfile {
     pub principal: Principal,
     pub username: String,
     pub handle: String,
-    pub bio: Option<String>,
-    pub avatar: Option<String>,
+    pub bio: String,
+    pub avatar: String,
     pub social_links: Option<Vec<(String, String)>>,
     pub interests: Vec<String>,
     pub followed_users: HashSet<Principal>,
@@ -174,8 +186,8 @@ pub struct UserRewards {
     pub points: u64,
     pub points_history: Vec<PointsTransaction>,
     pub last_claim_date: Option<u64>,
-    pub consecutive_daily_logins: u64,
-    pub level: u64,
+    // Note: consecutive_daily_logins field has been moved to daily_checkin_task canister
+    // and is now tracked as consecutive_days there
     pub transactions: Vec<PointsTransaction>,
     pub last_updated: u64,
 }
@@ -233,17 +245,16 @@ pub enum ParentType {
 pub enum UserStatus {
     #[default]
     Active,
-    Restricted,
     Suspended,
     Banned,
-    Verified,
+    Restricted,
 }
 
 #[derive(CandidType, Deserialize, Clone, PartialEq, Default)]
 pub enum UserRole {
     #[default]
     User,
-    Creator,
-    Moderator,
     Admin,
+    Moderator,
+    Creator,
 }

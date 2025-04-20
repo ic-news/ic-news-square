@@ -2,6 +2,20 @@ use candid::{CandidType, Deserialize, Principal};
 use crate::storage::{ContentStatus, ContentVisibility, ParentType};
 
 // Request DTOs
+
+// News reference for referencing news in posts and articles
+#[derive(CandidType, Deserialize, Clone)]
+pub struct NewsReferenceRequest {
+    pub metadata: Vec<(String, String)>,
+    pub canister_id: Principal,
+}
+
+// News reference response for returning news references in responses
+#[derive(CandidType, Deserialize, Clone, Debug)]
+pub struct NewsReferenceResponse {
+    pub metadata: Vec<(String, String)>,
+    pub canister_id: Principal,
+}
 #[derive(CandidType, Deserialize, Clone)]
 pub struct CreatePostRequest {
     pub id: Option<String>,
@@ -13,6 +27,7 @@ pub struct CreatePostRequest {
     pub tags: Option<Vec<String>>,  // Max 5 tags
     pub is_nsfw: Option<bool>,
     pub visibility: Option<ContentVisibility>,
+    pub news_reference: Option<NewsReferenceRequest>,  // Optional reference to news
 }
 
 #[derive(CandidType, Deserialize, Clone)]
@@ -24,6 +39,7 @@ pub struct CreateArticleRequest {
     pub token_mentions: Option<Vec<String>>,
     pub is_nsfw: Option<bool>,
     pub visibility: Option<ContentVisibility>,
+    pub news_reference: Option<NewsReferenceRequest>,  // Optional reference to news
 }
 
 #[derive(CandidType, Deserialize, Clone)]
@@ -43,6 +59,7 @@ pub struct UpdatePostRequest {
     pub token_mentions: Option<Vec<String>>,
     pub tags: Option<Vec<String>>,  // Max 5 tags
     pub visibility: Option<ContentVisibility>,
+    pub news_reference: Option<NewsReferenceRequest>,  // Optional reference to news
 }
 
 #[derive(CandidType, Deserialize, Clone)]
@@ -53,6 +70,7 @@ pub struct UpdateArticleRequest {
     pub hashtags: Option<Vec<String>>,
     pub token_mentions: Option<Vec<String>>,
     pub visibility: Option<ContentVisibility>,
+    pub news_reference: Option<NewsReferenceRequest>,  // Optional reference to news
 }
 
 #[derive(CandidType, Deserialize, Clone)]
@@ -79,6 +97,7 @@ pub struct PostResponse {
     pub comments_count: u64,
     pub shares_count: u64,
     pub author_info: crate::models::user::UserSocialResponse,
+    pub news_reference: Option<NewsReferenceResponse>,
 }
 
 #[derive(CandidType, Deserialize, Clone, Debug)]
@@ -97,6 +116,7 @@ pub struct ArticleResponse {
     pub comments_count: u64,
     pub shares_count: u64,
     pub author_info: crate::models::user::UserSocialResponse,
+    pub news_reference: Option<NewsReferenceResponse>,
 }
 
 #[derive(CandidType, Deserialize, Clone, Debug)]
@@ -113,7 +133,7 @@ pub struct CommentResponse {
     pub comments_count: u64,
     pub shares_count: u64,
     pub visibility: ContentVisibility,
-    pub child_comments: Vec<String>,
+    pub child_comments: Vec<Box<CommentResponse>>,
     pub author_info: crate::models::user::UserSocialResponse,
     pub is_liked: bool,
 }

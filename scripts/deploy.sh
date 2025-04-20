@@ -1,5 +1,5 @@
 #!/bin/bash
-
+dfx identity use ic-news
 # Configuration variables
 daily_canister_name="daily_checkin_task"
 
@@ -30,15 +30,14 @@ fi
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 cd "$PROJECT_ROOT/canisters/$daily_canister_name"
-
 # Deploy daily_checkin_task canister
 ./scripts/deploy.sh --network "$NETWORK"
 
 # Get and display canister ID
 echo "Getting canister ID information..."
-if [ -f ".dfx/$NETWORK/canister_ids.json" ]; then
+if [ -f "$PROJECT_ROOT/canisters/$daily_canister_name/canister_ids.json" ]; then
     # Get daily_checkin_task canister ID
-    DAILY_CHECKIN_TASK_CANISTER_ID=$(jq -r ".$daily_canister_name.$NETWORK" .dfx/$NETWORK/canister_ids.json)
+    DAILY_CHECKIN_TASK_CANISTER_ID=$(jq -r ".$daily_canister_name.$NETWORK" "$PROJECT_ROOT/canisters/$daily_canister_name/canister_ids.json")
     
     if [ "$DAILY_CHECKIN_TASK_CANISTER_ID" != "null" ]; then
         echo "$daily_canister_name canister ID ($NETWORK): $DAILY_CHECKIN_TASK_CANISTER_ID"
@@ -84,11 +83,21 @@ if [ -n "$DAILY_CHECKIN_TASK_CANISTER_ID" ]; then
             start_time = null;
             end_time = null;
             completion_criteria = "Daily check-in";
-            requirements = record {
-                min_level = 0;
-                required_tokens = vec {};
-                required_nfts = vec {};
-                custom_requirements = vec {}
+            requirements = opt record {
+                social_interaction = opt record {
+                    share_count = opt (0 : nat64);
+                    like_count = opt (0 : nat64);
+                    follow_count = opt (0 : nat64);
+                };
+                required_tokens = opt vec {};
+                required_nfts = opt vec {};
+                login_streak = opt record { days_required = 1 : nat64 };
+                custom_requirements = opt vec {};
+                content_creation = opt record {
+                    comment_count = opt (0 : nat64);
+                    article_count = opt (0 : nat64);
+                    post_count = opt (0 : nat64);
+                };
             }
         }
     )'

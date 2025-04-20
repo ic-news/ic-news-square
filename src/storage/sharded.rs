@@ -234,6 +234,11 @@ impl Default for ShardedLikes {
 }
 
 impl ShardedLikes {
+    // Get all content IDs with likes
+    pub fn content_ids(&self) -> Vec<String> {
+        self.content_to_shard.keys().cloned().collect()
+    }
+    
     // Add a like
     pub fn add_like(&mut self, content_id: &str, user: Principal) -> bool {
         // Find or create the shard for this content

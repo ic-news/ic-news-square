@@ -1,6 +1,10 @@
-use candid::Principal;
+use candid::{CandidType, Deserialize, Encode, Nat, Principal};
 use ic_cdk::api::time;
+use ic_cdk::api::call;
+use ic_cdk::id;
 use std::collections::HashMap;
+
+use crate::Value;
 
 use crate::auth::is_manager_or_admin;
 use crate::models::reward;
@@ -10,13 +14,7 @@ use crate::storage::{STORAGE, UserRewards, UserTasks, PointsTransaction};
 use crate::storage::sharded::{SHARDED_USER_REWARDS, SHARDED_USER_TASKS};
 use crate::utils::error_handler::*;
 
-// Helper function to calculate user level based on points
-fn calculate_level(points: u64) -> u64 {
-    // Simple level calculation: level = 1 + (points / 100)
-    // This means every 100 points, user gains a level
-    // Level 1 is the starting level (0-99 points)
-    1 + (points / 100)
-}
+
 
 // Initialize default tasks with configurable active state
 pub fn init_default_tasks(enable_daily_post: bool, enable_weekly_article: bool, enable_social_engagement: bool) {
@@ -39,6 +37,8 @@ pub fn init_default_tasks(enable_daily_post: bool, enable_weekly_article: bool, 
                 created_at: time(),
                 updated_at: time(),
                 is_active: enable_daily_post,
+                requirements: None,
+                canister_id: ic_cdk::id(),
             };
             
             // Weekly article task
@@ -53,20 +53,24 @@ pub fn init_default_tasks(enable_daily_post: bool, enable_weekly_article: bool, 
                 created_at: time(),
                 updated_at: time(),
                 is_active: enable_weekly_article,
+                requirements: None,
+                canister_id: ic_cdk::id(),
             };
             
             // Social engagement task
             let social_engagement = TaskDefinition {
                 id: "social_engagement".to_string(),
                 title: "Social Engagement".to_string(),
-                description: "Like or comment on at least 10 posts".to_string(),
+                description: "Engage with other users to earn points".to_string(),
                 points: 100,
-                task_type: TaskType::Weekly,
-                completion_criteria: "Like or comment on 10 posts".to_string(),
+                task_type: TaskType::Daily,
+                completion_criteria: "Like or comment on at least 3 posts".to_string(),
                 expiration_time: None,
                 created_at: time(),
                 updated_at: time(),
                 is_active: enable_social_engagement,
+                requirements: None,
+                canister_id: ic_cdk::id(),
             };
             
             // Add tasks to storage
@@ -80,6 +84,20 @@ pub fn init_default_tasks(enable_daily_post: bool, enable_weekly_article: bool, 
 // Default initialization with all tasks enabled
 pub fn init_default_tasks_all_enabled() {
     init_default_tasks(true, true, true);
+}
+
+// Initialize default tasks only if no tasks exist
+pub fn init_default_tasks_if_empty() {
+    let tasks_exist = STORAGE.with(|storage| {
+        !storage.borrow().tasks.is_empty()
+    });
+    
+    if !tasks_exist {
+        ic_cdk::println!("Initializing default tasks");
+        init_default_tasks_all_enabled();
+    } else {
+        ic_cdk::println!("Tasks already exist, skipping initialization");
+    }
 }
 
 // Toggle task active status
@@ -108,163 +126,32 @@ pub fn toggle_task_status(task_id: &str, active: bool) -> SquareResult<()> {
 }
 
 // Daily check-in
-pub fn claim_daily_check_in(caller: Principal) -> SquareResult<DailyCheckInResponse> {
-    STORAGE.with(|storage| {
-        let mut storage = storage.borrow_mut();
-        
-        // First check if user rewards exist, if not create them
-        if !storage.user_rewards.contains_key(&caller) {
-            storage.user_rewards.insert(caller, UserRewards {
-                principal: caller,
-                points: 0,
-                points_history: Vec::new(),
-                last_claim_date: None,
-                consecutive_daily_logins: 0,
-                level: 1,
-                transactions: Vec::new(),
-                last_updated: time(),
-            });
-        }
-        
-        // First check if user tasks exist, if not create them
-        if !storage.user_tasks.contains_key(&caller) {
-            storage.user_tasks.insert(caller, UserTasks {
-                principal: caller,
-                completed_tasks: HashMap::new(),
-                daily_tasks_reset: time()/ 1_000_000,
-                last_check_in: None,
-                last_updated: time(),
-            });
-        }
-        
-        // Get user tasks info before mutable borrow
-        let last_check_in = storage.user_tasks.get(&caller).unwrap().last_check_in;
-        let consecutive_daily_logins = storage.user_rewards.get(&caller).unwrap().consecutive_daily_logins;
-        
-        // Check if already claimed today
-        let now = time()/ 1_000_000;
-        let today_start = now - (now % SECONDS_IN_DAY);
-        
-        if let Some(last_check) = last_check_in {
-            let last_check_in_day = last_check - (last_check % SECONDS_IN_DAY);
-            
-            if last_check_in_day == today_start {
-                return Err(SquareError::InvalidOperation("Already claimed daily check-in today".to_string()));
-            }
-        }
-        
-        // Calculate consecutive days
-        let mut consecutive_days = consecutive_daily_logins;
-        let mut bonus_points = 0;
-        
-        if let Some(last_claim) = last_check_in {
-            let yesterday_start = today_start - SECONDS_IN_DAY;
-            let last_claim_day = last_claim - (last_claim % SECONDS_IN_DAY);
-            
-            if last_claim_day == yesterday_start {
-                // Consecutive day
-                consecutive_days += 1;
-                
-                // Apply bonus for consecutive days (capped at MAX_CONSECUTIVE_BONUS_DAYS)
-                let bonus_multiplier = if consecutive_days > MAX_CONSECUTIVE_BONUS_DAYS {
-                    MAX_CONSECUTIVE_BONUS_DAYS
-                } else {
-                    consecutive_days
-                };
-                
-                bonus_points = (DAILY_CHECK_IN_POINTS * bonus_multiplier) / CONSECUTIVE_DAYS_BONUS_MULTIPLIER;
-            } else {
-                // Streak broken
-                consecutive_days = 1;
-            }
-        } else {
-            // First check-in
-            consecutive_days = 1;
-        }
-        
-        // Update user rewards
-        let total_points = DAILY_CHECK_IN_POINTS + bonus_points;
-        
-        // Get mutable references to update the data
-        {
-            let user_rewards = storage.user_rewards.get_mut(&caller).unwrap();
-            user_rewards.points += total_points;
-            user_rewards.consecutive_daily_logins = consecutive_days;
-            user_rewards.last_claim_date = Some(now);
-            
-            // Add points transaction
-            user_rewards.points_history.push(PointsTransaction {
-                amount: total_points as i64,
-                reason: format!("Daily check-in (Day {})", consecutive_days),
-                timestamp: now,
-                reference_id: None,
-                points: total_points,
-            });
-        }
-        
-        // Update user tasks in a separate scope to avoid multiple mutable borrows
-        {
-            let user_tasks = storage.user_tasks.get_mut(&caller).unwrap();
-            user_tasks.last_check_in = Some(now);
-        }
-        
-        // Calculate next claim time
-        let next_claim_available_at = today_start + SECONDS_IN_DAY;
-        
-        Ok(DailyCheckInResponse {
-            success: true,
-            points_earned: DAILY_CHECK_IN_POINTS,
-            consecutive_days,
-            bonus_points,
-            total_points,
-            next_claim_available_at,
-        })
-    })
-}
+// Note: The daily check-in functionality has been moved to a separate canister
+// See: canisters/daily_checkin_task/src/lib.rs
+// Users should call that canister directly for daily check-ins
 
 // Task completion
 pub fn complete_task(request: CompleteTaskRequest, caller: Principal) -> SquareResult<TaskCompletionResponse> {
     const MODULE: &str = "services::reward";
     const FUNCTION: &str = "complete_task";
     
-    // First check if proof is provided, all tasks must have proof
-    let _proof = match &request.proof {
-        Some(proof) => {
-            // Check if the proof format is valid
-            // For daily_post and weekly_article, we need specific proof formats
-            // For other tasks, we accept any proof
-            if request.task_id == "daily_post" && !proof.contains("post_") && !proof.contains("simple") {
-                return log_and_return(validation_error(
-                    &format!("Invalid proof format for daily_post: {}", proof),
-                    MODULE,
-                    FUNCTION
-                ));
-            } else if request.task_id == "weekly_article" && !proof.contains("article_") && !proof.contains("simple") {
-                return log_and_return(validation_error(
-                    &format!("Invalid proof format for weekly_article: {}", proof),
-                    MODULE,
-                    FUNCTION
-                ));
-            }
-            
-            // If we reach here, the proof is valid
-            proof
-        },
+    let task_info = STORAGE.with(|storage| {
+        let storage = storage.borrow();
+        storage.tasks.get(&request.task_id).cloned()
+    });
+    
+    let task_type = match task_info {
+        Some(task) => task.task_type,
         None => {
-            // For social_engagement and other tasks, we can accept null proof
-            // Only daily_post and weekly_article require specific proof formats
-            if request.task_id == "daily_post" || request.task_id == "weekly_article" {
-                return log_and_return(validation_error(
-                    &format!("Proof is required for {} task", request.task_id),
-                    MODULE,
-                    FUNCTION
-                ));
+            match request.task_id.as_str() {
+                id if id.starts_with("daily_") => TaskType::Daily,
+                id if id.starts_with("weekly_") => TaskType::Weekly,
+                _ => TaskType::OneTime
             }
-            
-            // For other tasks, use a default proof
-            "simple"
         }
     };
+    
+    let _proof = request.task_id.clone();
     
     STORAGE.with(|storage| {
         let storage = storage.borrow_mut();
@@ -284,7 +171,7 @@ pub fn complete_task(request: CompleteTaskRequest, caller: Principal) -> SquareR
         }
         
         // Now get the task details
-        let (task_reward, task_type, expiration_time) = match task_opt {
+        let (task_reward, task_type, _expiration_time) = match task_opt {
             Some(task) => {
                 (task.points, task.task_type.clone(), task.expiration_time)
             },
@@ -293,7 +180,7 @@ pub fn complete_task(request: CompleteTaskRequest, caller: Principal) -> SquareR
                 match request.task_id.as_str() {
                     "daily_post" => (50, TaskType::Daily, None),
                     "weekly_article" => (200, TaskType::Weekly, None),
-                    "social_engagement" => (100, TaskType::Weekly, None),
+                    "social_engagement" => (100, TaskType::Daily, None),
                     _ => return Err(SquareError::NotFound(format!("Task with ID {} not found", request.task_id)))
                 }
             }
@@ -334,7 +221,7 @@ pub fn complete_task(request: CompleteTaskRequest, caller: Principal) -> SquareR
                             let today_start = now - (now % SECONDS_IN_DAY);
                             let completion_day = completion_time / 1_000_000 - (completion_time / 1_000_000 % SECONDS_IN_DAY);
                             
-                            // If completed on a different day, allow completion again
+                            // If completed on the same day, reject completion again
                             completion_day == today_start
                         },
                         TaskType::Weekly => {
@@ -344,7 +231,7 @@ pub fn complete_task(request: CompleteTaskRequest, caller: Principal) -> SquareR
                             let week_start = now - (now % (SECONDS_IN_DAY * 7));
                             let completion_week = completion_time / 1_000_000 - (completion_time / 1_000_000 % (SECONDS_IN_DAY * 7));
                             
-                            // If completed in a different week, allow completion again
+                            // If completed in the same week, reject completion again
                             completion_week == week_start
                         },
                         _ => true // For one-time tasks, always consider as completed
@@ -388,7 +275,7 @@ pub fn complete_task(request: CompleteTaskRequest, caller: Principal) -> SquareR
         
         // Award points
         let user_rewards_key = caller.to_string();
-        let (points, level, level_up) = SHARDED_USER_REWARDS.with(|rewards| {
+        let points = SHARDED_USER_REWARDS.with(|rewards| {
             let mut rewards = rewards.borrow_mut();
             let user_rewards = match rewards.get(&user_rewards_key) {
                 Some(rewards) => rewards.clone(),
@@ -397,8 +284,8 @@ pub fn complete_task(request: CompleteTaskRequest, caller: Principal) -> SquareR
                     points: 0,
                     points_history: Vec::new(),
                     last_claim_date: None,
-                    consecutive_daily_logins: 0,
-                    level: 1,
+                    // consecutive_daily_logins field has been moved to daily_checkin_task canister
+
                     transactions: Vec::new(),
                     last_updated: time(),
                 }
@@ -409,16 +296,13 @@ pub fn complete_task(request: CompleteTaskRequest, caller: Principal) -> SquareR
             // Add points
             updated_rewards.points += task_reward;
             
-            // Update level if needed
-            let new_level = calculate_level(updated_rewards.points);
-            let level_up = new_level > updated_rewards.level;
-            updated_rewards.level = new_level;
+
             
             // Record transaction
             updated_rewards.points_history.push(PointsTransaction {
                 amount: task_reward as i64,
                 reason: format!("Completed task: {}", request.task_id),
-                timestamp: time(),
+                timestamp: time() / 1_000_000,
                 reference_id: Some(request.task_id.clone()),
                 points: task_reward,
             });
@@ -427,7 +311,7 @@ pub fn complete_task(request: CompleteTaskRequest, caller: Principal) -> SquareR
             
             rewards.insert(user_rewards_key.clone(), updated_rewards.clone());
             
-            (updated_rewards.points, updated_rewards.level, level_up)
+            updated_rewards.points
         });
         
         // Return the response
@@ -435,8 +319,7 @@ pub fn complete_task(request: CompleteTaskRequest, caller: Principal) -> SquareR
             success: true,
             points_earned: task_reward,
             total_points: points,
-            level: level,
-            level_up,
+
             message: format!("You earned {} points for completing {}", task_reward, request.task_id),
         })
     })
@@ -447,117 +330,154 @@ pub fn get_user_rewards(principal: Principal) -> SquareResult<UserRewardsRespons
     const MODULE: &str = "services::reward";
     const FUNCTION: &str = "get_user_rewards";
     
+    // Create a new UserRewardsResponse
+    let mut response = UserRewardsResponse::new();
+    
+    // Get user rewards from the main canister
     let user_rewards = SHARDED_USER_REWARDS.with(|rewards| {
         let mut rewards = rewards.borrow_mut();
         rewards.get(&principal.to_string()).map(|r| r.clone())
     });
     
     let user_rewards = match user_rewards {
-            Some(rewards) => rewards.clone(),
-            None => {
-                // If user rewards record doesn't exist, check user tasks record
-                let has_completed_tasks = SHARDED_USER_TASKS.with(|tasks| {
-                    let mut tasks = tasks.borrow_mut();
-                    let user_tasks_opt = tasks.get(&principal.to_string()).map(|t| t.clone());
-                    if let Some(user_tasks) = user_tasks_opt {
-                        // If user has completed tasks but rewards record doesn't exist, return empty rewards record
-                        if !user_tasks.completed_tasks.is_empty() {
-                            let completed_task_ids = user_tasks.completed_tasks.keys().cloned().collect();
-                            return Some(completed_task_ids);
-                        }
+        Some(rewards) => rewards.clone(),
+        None => {
+            // If user rewards record doesn't exist, check user tasks record
+            let has_completed_tasks = SHARDED_USER_TASKS.with(|tasks| {
+                let mut tasks = tasks.borrow_mut();
+                let user_tasks_opt = tasks.get(&principal.to_string()).map(|t| t.clone());
+                if let Some(user_tasks) = user_tasks_opt {
+                    // If user has completed tasks but rewards record doesn't exist, return empty rewards record
+                    if !user_tasks.completed_tasks.is_empty() {
+                        let completed_task_ids = user_tasks.completed_tasks.keys().cloned().collect::<Vec<String>>();
+                        response.insert("completed_tasks_count".to_string(), Value::Nat(completed_task_ids.len() as u64));
+                        
+                        // Add completed tasks as an array
+                        let task_ids: Vec<Value> = completed_task_ids.iter()
+                            .map(|id| Value::Text(id.clone()))
+                            .collect();
+                        response.insert("completed_tasks".to_string(), Value::Array(task_ids));
+                        
+                        return Ok(response.clone());
                     }
-                    None
-                });
-                
-                if let Some(completed_tasks) = has_completed_tasks {
-                    return Ok(UserRewardsResponse {
-                        points: 0,
-                        level: 0,
-                        completed_tasks,
-                        points_history: Vec::new(),
+                }
+                Err(SquareError::NotFound("User tasks not found".to_string()))
+            });
+            
+            if has_completed_tasks.is_ok() {
+                return Ok(response);
+            }
+            
+            // If user hasn't completed any tasks or tasks record doesn't exist, create a new rewards record
+            // Initialize a new user rewards record
+            let new_user_rewards = UserRewards {
+                principal: principal.clone(),
+                points: 0,
+                points_history: Vec::new(),
+                last_claim_date: None,
+                // consecutive_daily_logins field has been moved to daily_checkin_task canister
+                transactions: Vec::new(),
+                last_updated: time(),
+            };
+            
+            // Store the new rewards record
+            SHARDED_USER_REWARDS.with(|rewards| {
+                let mut rewards = rewards.borrow_mut();
+                rewards.insert(principal.to_string(), new_user_rewards.clone());
+            });
+            
+            // Also create an empty user tasks record if it doesn't exist
+            SHARDED_USER_TASKS.with(|tasks| {
+                let mut tasks = tasks.borrow_mut();
+                if !tasks.contains_key(&principal.to_string()) {
+                    tasks.insert(principal.to_string(), UserTasks {
+                        principal: principal.clone(),
+                        completed_tasks: HashMap::new(),
+                        daily_tasks_reset: time() / 1_000_000,
+                        last_check_in: None,
+                        last_updated: time(),
                     });
                 }
-                
-                // If user hasn't completed any tasks or tasks record doesn't exist, create a new rewards record
-                // Initialize a new user rewards record
-                let new_user_rewards = UserRewards {
-                    principal: principal.clone(),
-                    points: 0,
-                    points_history: Vec::new(),
-                    last_claim_date: None,
-                    consecutive_daily_logins: 0,
-                    level: 0,
-                    transactions: Vec::new(),
-                    last_updated: time(),
-                };
-                
-                // Store the new rewards record
-                SHARDED_USER_REWARDS.with(|rewards| {
-                    let mut rewards = rewards.borrow_mut();
-                    rewards.insert(principal.to_string(), new_user_rewards.clone());
-                });
-                
-                // Also create an empty user tasks record if it doesn't exist
-                SHARDED_USER_TASKS.with(|tasks| {
-                    let mut tasks = tasks.borrow_mut();
-                    if !tasks.contains_key(&principal.to_string()) {
-                        tasks.insert(principal.to_string(), UserTasks {
-                            principal: principal.clone(),
-                            completed_tasks: HashMap::new(),
-                            daily_tasks_reset: time() / 1_000_000,
-                            last_check_in: None,
-                            last_updated: time(),
-                        });
-                    }
-                });
-                
-                // Return the newly created rewards
-                return Ok(UserRewardsResponse {
-                    points: 0,
-                    level: 0,
-                    completed_tasks: Vec::new(),
-                    points_history: Vec::new(),
-                });
-            }
-        };
+            });
             
-        // Calculate user level (simple example: level up every 100 points)
-        let level = user_rewards.points / 100;
+            // Add basic info to the response
+            response.insert("points".to_string(), Value::Nat(0));
         
-        // Get user's completed tasks
-        let completed_tasks = SHARDED_USER_TASKS.with(|tasks| {
-            let mut tasks = tasks.borrow_mut();
-            let user_tasks_opt = tasks.get(&principal.to_string()).map(|tasks| tasks.clone());
-            match user_tasks_opt {
-            Some(user_tasks) => user_tasks.completed_tasks.keys().cloned().collect(),
-            None => Vec::new(),
+            response.insert("completed_tasks_count".to_string(), Value::Nat(0));
+            response.insert("completed_tasks".to_string(), Value::Array(Vec::new()));
+            
+            return Ok(response);
+        }
+    };
+        
+
+    
+    // Get user's completed tasks
+    let completed_tasks = SHARDED_USER_TASKS.with(|tasks| {
+        let mut tasks = tasks.borrow_mut();
+        let user_tasks_opt = tasks.get(&principal.to_string()).map(|tasks| tasks.clone());
+        match user_tasks_opt {
+        Some(user_tasks) => user_tasks.completed_tasks.keys().cloned().collect::<Vec<String>>(),
+        None => Vec::new(),
+        }
+    });
+    
+    // Add main canister data to response
+    response.insert("points".to_string(), Value::Nat(user_rewards.points));
+
+    response.insert("completed_tasks_count".to_string(), Value::Nat(completed_tasks.len() as u64));
+    
+    // Add completed tasks as an array
+    let task_ids: Vec<Value> = completed_tasks.iter()
+        .map(|id| Value::Text(id.clone()))
+        .collect();
+    response.insert("completed_tasks".to_string(), Value::Array(task_ids));
+    
+    // Add points history count
+    response.insert("points_history_count".to_string(), Value::Nat(user_rewards.points_history.len() as u64));
+    
+    // Add points history as an array (always include this field, even if empty)
+    let history: Vec<Value> = user_rewards.points_history.iter()
+        .map(|tx| {
+            let mut map_entries = Vec::new();
+            map_entries.push(("amount".to_string(), Value::Int(tx.amount)));
+            map_entries.push(("reason".to_string(), Value::Text(tx.reason.clone())));
+            map_entries.push(("timestamp".to_string(), Value::Nat(tx.timestamp)));
+            if let Some(ref_id) = &tx.reference_id {
+                map_entries.push(("reference_id".to_string(), Value::Text(ref_id.clone())));
             }
-        });
-        
-        // Convert storage_main::PointsTransaction to models::reward::PointsTransaction
-        let points_history: Vec<reward::PointsTransaction> = user_rewards.points_history
-            .iter()
-            .map(|tx| reward::PointsTransaction {
-                amount: tx.amount,
-                reason: tx.reason.clone(),
-                timestamp: tx.timestamp,
-                reference_id: tx.reference_id.clone(),
-            })
-            .collect();
-        
-        Ok(UserRewardsResponse {
-            points: user_rewards.points,
-            level,
-            completed_tasks,
-            points_history,
-    })
+            map_entries.push(("points".to_string(), Value::Nat(tx.points)));
+            Value::Map(map_entries)
+        })
+        .collect();
+    response.insert("points_history".to_string(), Value::Array(history));
+    
+    // Add latest transaction if available
+    if !user_rewards.points_history.is_empty() {
+        let latest = &user_rewards.points_history[user_rewards.points_history.len() - 1];
+        response.insert("latest_transaction_amount".to_string(), Value::Int(latest.amount));
+        response.insert("latest_transaction_reason".to_string(), Value::Text(latest.reason.clone()));
+        response.insert("latest_transaction_timestamp".to_string(), Value::Nat(latest.timestamp));
+    }
+    
+    // Add last claim date if available
+    if let Some(last_claim) = user_rewards.last_claim_date {
+        response.insert("last_claim_date".to_string(), Value::Nat(last_claim));
+    }
+    
+    // Add user principal
+    response.insert("principal".to_string(), Value::Principal(principal));
+    
+    // Add last updated timestamp
+    response.insert("last_updated".to_string(), Value::Nat(user_rewards.last_updated));
+    
+    Ok(response)
 }
 
 // Get available tasks
 pub fn get_available_tasks(caller: Principal) -> SquareResult<Vec<TaskResponse>> {
     const MODULE: &str = "services::reward";
     const FUNCTION: &str = "get_available_tasks";
-    
     
     STORAGE.with(|storage| {
         let storage = storage.borrow();
@@ -646,7 +566,7 @@ pub fn award_points(request: AwardPointsRequest) -> SquareResult<()> {
     is_manager_or_admin()?;
     
     let user_rewards_key = request.principal.to_string();
-    let (_points, _level, _level_up) = SHARDED_USER_REWARDS.with(|rewards| {
+    let _points = SHARDED_USER_REWARDS.with(|rewards| {
         let mut rewards = rewards.borrow_mut();
         let user_rewards = match rewards.get(&user_rewards_key) {
             Some(rewards) => rewards.clone(),
@@ -655,8 +575,7 @@ pub fn award_points(request: AwardPointsRequest) -> SquareResult<()> {
             points: 0,
             points_history: Vec::new(),
             last_claim_date: None,
-            consecutive_daily_logins: 0,
-            level: 1,
+            // consecutive_daily_logins field has been moved to daily_checkin_task canister
             transactions: Vec::new(),
             last_updated: time(),
         }
@@ -667,16 +586,13 @@ pub fn award_points(request: AwardPointsRequest) -> SquareResult<()> {
         // Add points
         updated_rewards.points += request.points;
         
-        // Update level if needed
-        let new_level = calculate_level(updated_rewards.points);
-        let level_up = new_level > updated_rewards.level;
-        updated_rewards.level = new_level;
+
         
         // Record transaction
         updated_rewards.points_history.push(PointsTransaction {
             amount: request.points as i64,
             reason: request.reason.clone(),
-            timestamp: time(),
+            timestamp: time() / 1_000_000,
             reference_id: request.reference_id.clone(),
             points: request.points,
         });
@@ -685,7 +601,7 @@ pub fn award_points(request: AwardPointsRequest) -> SquareResult<()> {
         
         rewards.insert(user_rewards_key.clone(), updated_rewards.clone());
         
-        (updated_rewards.points, updated_rewards.level, level_up)
+        updated_rewards.points
     });
     
     Ok(())
@@ -725,6 +641,8 @@ pub fn create_task(request: CreateTaskRequest) -> SquareResult<String> {
         created_at: now,
         updated_at: now,
         is_active: true,
+        requirements: request.requirements,
+        canister_id: request.canister_id,
     };
     
     // Store the task
@@ -780,6 +698,7 @@ pub fn update_task(request: UpdateTaskRequest) -> SquareResult<()> {
         task.completion_criteria = request.completion_criteria;
         task.expiration_time = request.end_time;
         task.updated_at = time() / 1_000_000;
+        task.requirements = request.requirements;
         
         Ok(())
     })

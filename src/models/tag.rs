@@ -19,7 +19,7 @@ pub struct TagStats {
 #[derive(CandidType, Deserialize, Clone)]
 pub struct GetHotTagsRequest {
     pub tag_type: Option<TagType>,
-    pub limit: Option<usize>,  // Default to 20 if not specified
+    pub limit: Option<usize>, 
 }
 
 #[derive(CandidType, Deserialize, Clone)]

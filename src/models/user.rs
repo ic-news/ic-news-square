@@ -22,8 +22,8 @@ pub struct UserProfile {
     pub principal: Principal,
     pub username: String,
     pub handle: String,
-    pub bio: Option<String>,
-    pub avatar: Option<String>,
+    pub bio: String,
+    pub avatar: String,
     pub social_links: Vec<(String, String)>,
     pub interests: Vec<String>,
     pub followers: HashSet<Principal>,
@@ -45,7 +45,6 @@ pub struct UserStats {
     pub like_count: u64,
     pub share_count: u64,
     pub points: u64,
-    pub level: u64,
     pub reputation: u64,
 }
 
@@ -54,8 +53,8 @@ pub struct UserStats {
 pub struct RegisterUserRequest {
     pub username: String,
     pub handle: String,
-    pub bio: Option<String>,
-    pub avatar: Option<String>,
+    pub bio: String,
+    pub avatar: String,
     pub social_links: Option<Vec<(String, String)>>,
     pub interests: Option<Vec<String>>,
 }
@@ -139,14 +138,15 @@ pub struct UserProfileResponse {
     pub principal: Principal,
     pub username: String,
     pub handle: String,
-    pub bio: Option<String>,
-    pub avatar: Option<String>,
+    pub bio: String,
+    pub avatar: String,
     pub social_links: Vec<(String, String)>,
-    pub interests: Vec<String>,
     pub followers_count: u64,
     pub following_count: u64,
-    pub created_at: u64,
-    pub updated_at: u64,
+    pub registered_at: u64,
+    pub last_login: u64,
+    pub status: UserStatus,
+    pub role: UserRole,
     pub is_following: bool,
 }
 
@@ -155,8 +155,8 @@ pub struct UserSocialResponse {
     pub principal: Principal,
     pub username: String,
     pub handle: String,
-    pub avatar: Option<String>,
-    pub bio: Option<String>,
+    pub avatar: String,
+    pub bio: String,
     pub followers_count: u64,
     pub following_count: u64,
     pub is_following: bool,
@@ -171,7 +171,6 @@ pub struct UserStatsResponse {
     pub like_count: u64,
     pub share_count: u64,
     pub points: u64,
-    pub level: u64,
     pub reputation: u64,
 }
 
@@ -180,8 +179,8 @@ pub struct UserResponse {
     pub principal: Principal,
     pub username: String,
     pub handle: String,
-    pub bio: Option<String>,
-    pub avatar: Option<String>,
+    pub bio: String,
+    pub avatar: String,
     pub social_links: Vec<(String, String)>,
     pub interests: Vec<String>,
     pub followers_count: u64,
@@ -199,10 +198,14 @@ pub struct UserLeaderboardItem {
     pub principal: Principal,
     pub username: String,
     pub handle: String,
-    pub avatar: Option<String>,
+    pub avatar: String,
     pub points: u64,
-    pub level: u64,
     pub rank: u64,
+    pub last_claim_date: Option<u64>,
+    pub consecutive_daily_logins: u64,
+    pub article_count: u64,
+    pub post_count: u64,
+    pub followers_count: u64,
 }
 
 #[derive(CandidType, Deserialize, Clone)]
@@ -262,15 +265,15 @@ pub struct NotificationsResponse {
 #[derive(CandidType, Deserialize, Clone, PartialEq)]
 pub enum UserStatus {
     Active,
-    Inactive,
     Suspended,
     Banned,
-    Verified,
+    Restricted,
 }
 
 #[derive(CandidType, Deserialize, Clone, PartialEq)]
 pub enum UserRole {
     User,
-    Moderator,
     Admin,
+    Moderator,
+    Creator,
 }
