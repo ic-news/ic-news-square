@@ -20,16 +20,12 @@ fn calculate_trending_score(content_id: &str, storage: &crate::storage::Storage,
         .map(|c| c.created_at)
         .collect();
     
-    // Get shares count
-    let shares = storage.shares.get(content_id).copied().unwrap_or(0) as usize;
-    
     // Calculate recency-weighted engagement
     let mut score = 0.0;
     
     // Weight for each type of engagement
     let like_weight = 1.0;
     let comment_weight = 2.0;
-    let share_weight = 3.0;
     
     // Add weighted likes score
     score += likes as f64 * like_weight;
@@ -47,9 +43,6 @@ fn calculate_trending_score(content_id: &str, storage: &crate::storage::Storage,
         score += comment_weight * time_factor;
     }
     
-    // Add weighted shares score
-    score += shares as f64 * share_weight;
-    
     score
 }
 
@@ -60,18 +53,16 @@ pub fn discover_content(request: DiscoverContentRequest) -> SquareResult<FeedRes
     
     
     // Implementation of content discovery logic
-    // Filter content based on the request parameters and return a feed of posts and articles
+    // Filter content based on the request parameters and return a feed of posts
     
-    let content_types = request.content_types.unwrap_or_else(|| vec![ContentType::Post, ContentType::Article]);
+    let content_types = request.content_types.unwrap_or_else(|| vec![ContentType::Post]);
     let tags = request.tags;
     let pagination = request.pagination;
     let sort_by = request.sort_by.unwrap_or(SortOption::Latest);
     let filter = request.filter;
     
     let mut posts = vec![];
-    let mut articles = vec![];
     let mut total_posts = 0;
-    let mut total_articles = 0;
     
     STORAGE.with(|storage| {
         let storage = storage.borrow();
@@ -171,14 +162,6 @@ pub fn discover_content(request: DiscoverContentRequest) -> SquareResult<FeedRes
                         // Primary sort by comments (descending), secondary by date (newest first)
                         comments_b.cmp(&comments_a).then(post_b.created_at.cmp(&post_a.created_at))
                     },
-                    SortOption::MostShared => {
-                        // Sort by shares count
-                        let shares_a = storage.shares.get(a).copied().unwrap_or(0) as usize;
-                        let shares_b = storage.shares.get(b).copied().unwrap_or(0) as usize;
-                        
-                        // Primary sort by shares (descending), secondary by date (newest first)
-                        shares_b.cmp(&shares_a).then(post_b.created_at.cmp(&post_a.created_at))
-                    },
                     SortOption::Trending => {
                         // Sort by recent engagement (weighted by recency)
                         let now = time();
@@ -206,7 +189,7 @@ pub fn discover_content(request: DiscoverContentRequest) -> SquareResult<FeedRes
             for post_id in paginated_posts {
                 if let Some(post) = storage.posts.get(post_id) {
                     // Get author info
-                    if let Ok(author_info) = crate::services::user::get_user_social_info(post.author, None) {
+                    if let Ok(author_info) = crate::services::user::get_user_social_info(post.author.to_string(), None) {
                         // Count likes
                         let likes_count = storage.likes.get(post_id)
                             .map(|likes| likes.len() as u64)
@@ -220,9 +203,6 @@ pub fn discover_content(request: DiscoverContentRequest) -> SquareResult<FeedRes
                                 comment.status == crate::storage::ContentStatus::Active
                             )
                             .count() as u64;
-                        
-                        // Get shares count
-                        let shares_count = storage.shares.get(post_id).copied().unwrap_or(0);
                         
                         // Create post response
                         posts.push(crate::models::content::PostResponse {
@@ -239,183 +219,8 @@ pub fn discover_content(request: DiscoverContentRequest) -> SquareResult<FeedRes
                             visibility: post.visibility.clone(),
                             likes_count,
                             comments_count,
-                            shares_count,
                             author_info,
                             news_reference: post.news_reference.clone().map(|nr| crate::models::content::NewsReferenceResponse {
-                                metadata: nr.metadata,
-                                canister_id: nr.canister_id,
-                            }),
-                        });
-                    }
-                }
-            }
-        }
-        
-        // Similar logic for articles
-        if content_types.contains(&ContentType::Article) {
-            // Collect all matching articles
-            let mut matching_articles = Vec::new();
-            
-            for (id, article) in &storage.articles {
-                if article.status == crate::storage::ContentStatus::Active {
-                    // Check if article matches tags filter
-                    let matches_tags = if let Some(ref tag_list) = tags {
-                        // Only include articles with matching tags
-                        article.hashtags.iter().any(|tag| tag_list.contains(tag))
-                    } else {
-                        // Include all active articles if no tags specified
-                        true
-                    };
-                    
-                    // Apply additional filters if specified
-                    let matches_filter = if let Some(ref content_filter) = filter {
-                        // Check hashtag filter
-                        let matches_hashtag = if let Some(ref hashtag) = content_filter.hashtag {
-                            article.hashtags.contains(&hashtag)
-                        } else {
-                            true
-                        };
-                        
-                        // Check token mention filter
-                        let matches_token = if let Some(ref token) = content_filter.token_mention {
-                            article.token_mentions.contains(&token)
-                        } else {
-                            true
-                        };
-                        
-                        // Check time range filters
-                        let matches_time_after = if let Some(created_after) = content_filter.created_after {
-                            article.created_at >= created_after
-                        } else {
-                            true
-                        };
-                        
-                        let matches_time_before = if let Some(created_before) = content_filter.created_before {
-                            article.created_at <= created_before
-                        } else {
-                            true
-                        };
-                        
-                        // Check author filter
-                        let matches_author = if let Some(author) = content_filter.author {
-                            article.author == author
-                        } else {
-                            true
-                        };
-                        
-                        // All filters must match
-                        matches_hashtag && matches_token && matches_time_after && matches_time_before && matches_author
-                    } else {
-                        true
-                    };
-                    
-                    if matches_tags && matches_filter {
-                        matching_articles.push(id.clone());
-                    }
-                }
-            }
-            
-            // Sort based on the specified sort option
-            matching_articles.sort_by(|a, b| {
-                let article_a = storage.articles.get(a).unwrap();
-                let article_b = storage.articles.get(b).unwrap();
-                
-                match sort_by {
-                    SortOption::Latest => {
-                        // Sort by creation date (newest first)
-                        article_b.created_at.cmp(&article_a.created_at)
-                    },
-                    SortOption::MostLiked => {
-                        // Sort by likes count
-                        let likes_a = storage.likes.get(a).map_or(0, |likes| likes.len());
-                        let likes_b = storage.likes.get(b).map_or(0, |likes| likes.len());
-                        
-                        // Primary sort by likes (descending), secondary by date (newest first)
-                        likes_b.cmp(&likes_a).then(article_b.created_at.cmp(&article_a.created_at))
-                    },
-                    SortOption::MostCommented => {
-                        // Sort by comments count
-                        let comments_a = storage.comments.values()
-                            .filter(|c| c.parent_id == *a && c.parent_type == crate::storage::ParentType::Article)
-                            .count();
-                        
-                        let comments_b = storage.comments.values()
-                            .filter(|c| c.parent_id == *b && c.parent_type == crate::storage::ParentType::Article)
-                            .count();
-                        
-                        // Primary sort by comments (descending), secondary by date (newest first)
-                        comments_b.cmp(&comments_a).then(article_b.created_at.cmp(&article_a.created_at))
-                    },
-                    SortOption::MostShared => {
-                        // Sort by shares count
-                        let shares_a = storage.shares.get(a).copied().unwrap_or(0) as usize;
-                        let shares_b = storage.shares.get(b).copied().unwrap_or(0) as usize;
-                        
-                        // Primary sort by shares (descending), secondary by date (newest first)
-                        shares_b.cmp(&shares_a).then(article_b.created_at.cmp(&article_a.created_at))
-                    },
-                    SortOption::Trending => {
-                        // Sort by recent engagement (weighted by recency)
-                        let now = time();
-                        let one_day = 24 * 60 * 60 * 1_000_000_000; // 1 day in nanoseconds
-                        
-                        // Calculate trending score based on recent engagement and time decay
-                        let score_a = calculate_trending_score(a, &storage, now, one_day);
-                        let score_b = calculate_trending_score(b, &storage, now, one_day);
-                        
-                        // Sort by trending score (descending)
-                        score_b.partial_cmp(&score_a).unwrap_or(std::cmp::Ordering::Equal)
-                    }
-                }
-            });
-            
-            // Store total count for pagination
-            total_articles = matching_articles.len();
-            
-            // Apply pagination
-            let start = pagination.offset.min(matching_articles.len());
-            let end = (pagination.offset + pagination.limit).min(matching_articles.len());
-            let paginated_articles = &matching_articles[start..end];
-            
-            // Convert to ArticleResponse
-            for article_id in paginated_articles {
-                if let Some(article) = storage.articles.get(article_id) {
-                    // Get author info
-                    if let Ok(author_info) = crate::services::user::get_user_social_info(article.author, None) {
-                        // Count likes
-                        let likes_count = storage.likes.get(article_id)
-                            .map(|likes| likes.len() as u64)
-                            .unwrap_or(0);
-                        
-                        // Count comments
-                        let comments_count = storage.comments.values()
-                            .filter(|comment| 
-                                comment.parent_id == *article_id && 
-                                comment.parent_type == crate::storage::ParentType::Article &&
-                                comment.status == crate::storage::ContentStatus::Active
-                            )
-                            .count() as u64;
-                        
-                        // Get shares count
-                        let shares_count = storage.shares.get(article_id).copied().unwrap_or(0);
-                        
-                        // Create article response
-                        articles.push(crate::models::content::ArticleResponse {
-                            id: article.id.clone(),
-                            author: article.author,
-                            content: article.content.clone(),
-                            media_urls: article.media_urls.clone(),
-                            hashtags: article.hashtags.clone(),
-                            token_mentions: article.token_mentions.clone(),
-                            created_at: article.created_at,
-                            updated_at: article.updated_at,
-                            status: article.status.clone(),
-                            visibility: article.visibility.clone(),
-                            likes_count,
-                            comments_count,
-                            shares_count,
-                            author_info,
-                            news_reference: article.news_reference.clone().map(|nr| crate::models::content::NewsReferenceResponse {
                                 metadata: nr.metadata,
                                 canister_id: nr.canister_id,
                             }),
@@ -427,20 +232,11 @@ pub fn discover_content(request: DiscoverContentRequest) -> SquareResult<FeedRes
     });
     
     // Determine if there are more items
-    let total_items = if content_types.contains(&ContentType::Post) && content_types.contains(&ContentType::Article) {
-        total_posts + total_articles
-    } else if content_types.contains(&ContentType::Post) {
-        total_posts
-    } else {
-        total_articles
-    };
-    
-    let has_more = total_items > pagination.offset + pagination.limit;
+    let has_more = total_posts > pagination.offset + pagination.limit;
     let next_offset = pagination.offset + pagination.limit;
     
     Ok(FeedResponse {
         posts,
-        articles,
         comments: vec![],
         has_more,
         next_offset
@@ -472,7 +268,7 @@ pub fn search_content(request: SearchRequest) -> SquareResult<Vec<SearchResultRe
     }
     
     let query = request.query.to_lowercase();
-    let content_types = request.content_types.unwrap_or_else(|| vec![ContentType::Post, ContentType::Article]);
+    let content_types = request.content_types.unwrap_or_else(|| vec![ContentType::Post]);
     let pagination = request.pagination;
     
     let mut results = Vec::new();
@@ -508,7 +304,7 @@ pub fn search_content(request: SearchRequest) -> SquareResult<Vec<SearchResultRe
                         let snippet = create_snippet(&post.content, &query);
                         
                         // Get author social info
-                        let author_info = match crate::services::user::get_user_social_info(post.author, None) {
+                        let author_info = match crate::services::user::get_user_social_info(post.author.to_string(), None) {
                             Ok(info) => info,
                             Err(_) => {
                                 // If we can't get the social info, skip this result
@@ -531,65 +327,6 @@ pub fn search_content(request: SearchRequest) -> SquareResult<Vec<SearchResultRe
             }
         }
         
-        // Search in articles
-        if content_types.contains(&ContentType::Article) {
-            for (id, article) in &storage.articles {
-                if article.status == crate::storage::ContentStatus::Active {
-                    // Check if content or hashtags match the query
-                    let content_match = article.content.to_lowercase().contains(&query);
-                    let hashtag_match = article.hashtags.iter().any(|tag| tag.to_lowercase().contains(&query));
-                    
-                    if content_match || hashtag_match {
-                        // Calculate relevance score
-                        let mut relevance_score = 0.0;
-                        
-                        if hashtag_match {
-                            relevance_score += 1.0; // Higher relevance for tag matches
-                        }
-                        
-                        if content_match {
-                            // Count occurrences in content for relevance
-                            let occurrences = article.content.to_lowercase().matches(&query).count();
-                            relevance_score += 0.5 + (occurrences as f64 * 0.1);
-                        }
-                        
-                        // Extract title from article content (first line or first 50 chars)
-                        let title = article.content.lines().next()
-                            .map(|line| {
-                                if line.len() > 50 {
-                                    format!("{}..", &line[0..47])
-                                } else {
-                                    line.to_string()
-                                }
-                            });
-                        
-                        // Create snippet from content
-                        let snippet = create_snippet(&article.content, &query);
-                        
-                        // Get author social info
-                        let author_info = match crate::services::user::get_user_social_info(article.author, None) {
-                            Ok(info) => info,
-                            Err(_) => {
-                                // If we can't get the social info, skip this result
-                                continue;
-                            }
-                        };
-                        
-                        // Add to search results
-                        results.push(SearchResultResponse {
-                            id: id.clone(),
-                            content_type: ContentType::Article,
-                            title,
-                            snippet,
-                            author: author_info,
-                            created_at: article.created_at,
-                            relevance_score,
-                        });
-                    }
-                }
-            }
-        }
-        
         // Search in comments if requested
         if content_types.contains(&ContentType::Comment) {
             for (id, comment) in &storage.comments {
@@ -604,7 +341,7 @@ pub fn search_content(request: SearchRequest) -> SquareResult<Vec<SearchResultRe
                         let snippet = create_snippet(&comment.content, &query);
                         
                         // Get author social info
-                        let author_info = match crate::services::user::get_user_social_info(comment.author, None) {
+                        let author_info = match crate::services::user::get_user_social_info(comment.author.to_string(), None) {
                             Ok(info) => info,
                             Err(_) => {
                                 // If we can't get the social info, skip this result
@@ -808,13 +545,11 @@ pub fn get_personalized_recommendations(request: PersonalizedRecommendationsRequ
     let recency_weight = request.recency_weight.unwrap_or(0.7);
     
     // Get content types
-    let content_types = request.content_types.unwrap_or_else(|| vec![ContentType::Post, ContentType::Article]);
+    let content_types = request.content_types.unwrap_or_else(|| vec![ContentType::Post]);
     
     // Prepare result containers
     let mut posts = vec![];
-    let mut articles = vec![];
     let mut total_posts = 0;
-    let mut total_articles = 0;
     
     // Content scoring and collection
     STORAGE.with(|storage| {
@@ -843,7 +578,6 @@ pub fn get_personalized_recommendations(request: PersonalizedRecommendationsRequ
         
         // Collect all content IDs and score them
         let mut scored_posts = Vec::new();
-        let mut scored_articles = Vec::new();
         
         // Process posts
         if content_types.contains(&ContentType::Post) {
@@ -937,10 +671,8 @@ pub fn get_personalized_recommendations(request: PersonalizedRecommendationsRequ
                     )
                     .count() as f64;
                 
-                let shares_count = storage.shares.get(id).copied().unwrap_or(0) as f64;
-                
                 // Normalize engagement metrics
-                let engagement_score = (likes_count * 0.4 + comments_count * 0.4 + shares_count * 0.2) / 100.0;
+                let engagement_score = (likes_count * 0.4 + comments_count * 0.4) / 100.0;
                 score += engagement_score.min(1.0); // Cap at 1.0
                 
                 // 7. Apply diversity factor - slightly randomize scores to increase diversity
@@ -972,7 +704,7 @@ pub fn get_personalized_recommendations(request: PersonalizedRecommendationsRequ
             for (post_id, _) in paginated_posts {
                 if let Some(post) = storage.posts.get(post_id) {
                     // Get author info
-                    if let Ok(author_info) = crate::services::user::get_user_social_info(post.author, Some(caller)) {
+                    if let Ok(author_info) = crate::services::user::get_user_social_info(post.author.to_string(), Some(caller)) {
                         // Count likes
                         let likes_count = storage.likes.get(post_id)
                             .map(|likes| likes.len() as u64)
@@ -986,9 +718,6 @@ pub fn get_personalized_recommendations(request: PersonalizedRecommendationsRequ
                                 comment.status == crate::storage::ContentStatus::Active
                             )
                             .count() as u64;
-                        
-                        // Get shares count
-                        let shares_count = storage.shares.get(post_id).copied().unwrap_or(0);
                         
                         // Create post response
                         posts.push(crate::models::content::PostResponse {
@@ -1005,7 +734,6 @@ pub fn get_personalized_recommendations(request: PersonalizedRecommendationsRequ
                             visibility: post.visibility.clone(),
                             likes_count,
                             comments_count,
-                            shares_count,
                             author_info,
                             news_reference: post.news_reference.clone().map(|nr| crate::models::content::NewsReferenceResponse {
                                 metadata: nr.metadata,
@@ -1017,185 +745,13 @@ pub fn get_personalized_recommendations(request: PersonalizedRecommendationsRequ
             }
         }
         
-        // Similar logic for articles
-        if content_types.contains(&ContentType::Article) {
-            for (id, article) in &storage.articles {
-                if article.status != crate::storage::ContentStatus::Active {
-                    continue;
-                }
-                
-                // Calculate content score based on multiple factors
-                let mut score = 0.0;
-                
-                // 1. Content from followed users
-                if include_followed_users && followed_users.contains(&article.author) {
-                    score += 2.0;
-                }
-                
-                // 2. Content with followed topics/tags
-                if include_followed_topics {
-                    for tag in &article.hashtags {
-                        if followed_topics.contains(tag) {
-                            score += 1.5;
-                            break;
-                        }
-                    }
-                }
-                
-                // 3. Trending content
-                if include_trending && storage.trending_content.contains(id) {
-                    score += 1.0;
-                }
-                
-                // 3.5 Collaborative filtering recommendations
-                if collab_content_ids.contains(id) {
-                    // Find the score from collaborative filtering
-                    for (rec_id, rec_type, rec_score) in &collaborative_recommendations {
-                        if rec_id == id && *rec_type == ContentType::Post {
-                            score += rec_score * 1.5; // Give higher weight to collaborative recommendations
-                            break;
-                        }
-                    }
-                }
-                
-                // 4. Similar to liked content
-                if include_similar_to_liked {
-                    // Check if user has liked this content
-                    let user_liked = storage.likes.get(id)
-                        .map(|likes| likes.contains(&caller))
-                        .unwrap_or(false);
-                    
-                    if user_liked {
-                        // Add to liked content for similarity calculations
-                        liked_content_ids.insert(id.clone());
-                        liked_content_tags.extend(article.hashtags.clone());
-                    }
-                    
-                    // Score based on tag similarity with liked content
-                    let common_tags = article.hashtags.iter()
-                        .filter(|tag| liked_content_tags.contains(*tag))
-                        .count();
-                    
-                    if common_tags > 0 {
-                        score += 0.5 * (common_tags as f64);
-                    }
-                }
-                
-                // 5. Content recency
-                let now = time() / 1_000_000;
-                let age_hours = (now - article.created_at) / 3600;
-                let recency_score = if age_hours < 24 {
-                    1.0
-                } else if age_hours < 72 {
-                    0.7
-                } else if age_hours < 168 { // 1 week
-                    0.4
-                } else {
-                    0.2
-                };
-                
-                score += recency_score * recency_weight;
-                
-                // 6. Engagement metrics
-                let likes_count = storage.likes.get(id)
-                    .map(|likes| likes.len() as f64)
-                    .unwrap_or(0.0);
-                
-                let comments_count = storage.comments.values()
-                    .filter(|comment| 
-                        comment.parent_id == *id && 
-                        comment.parent_type == crate::storage::ParentType::Article &&
-                        comment.status == crate::storage::ContentStatus::Active
-                    )
-                    .count() as f64;
-                
-                let shares_count = storage.shares.get(id).copied().unwrap_or(0) as f64;
-                
-                // Normalize engagement metrics
-                let engagement_score = (likes_count * 0.4 + comments_count * 0.4 + shares_count * 0.2) / 100.0;
-                score += engagement_score.min(1.0); // Cap at 1.0
-                
-                // 7. Apply diversity factor - slightly randomize scores to increase diversity
-                if diversity_factor > 0.0 {
-                    use rand::{Rng, SeedableRng};
-                    let mut rng = rand::rngs::StdRng::seed_from_u64(article.created_at);
-                    let diversity_adjustment = rng.gen_range(-diversity_factor..diversity_factor);
-                    score += diversity_adjustment;
-                }
-                
-                // Add to scored articles
-                scored_articles.push((id.clone(), score));
-            }
-            
-            // Sort articles by score (highest first)
-            scored_articles.sort_by(|(_, score_a), (_, score_b)| {
-                score_b.partial_cmp(score_a).unwrap_or(std::cmp::Ordering::Equal)
-            });
-            
-            // Store total count for pagination
-            total_articles = scored_articles.len();
-            
-            // Apply pagination
-            let start = request.pagination.offset.min(scored_articles.len());
-            let end = (request.pagination.offset + request.pagination.limit).min(scored_articles.len());
-            let paginated_articles = &scored_articles[start..end];
-            
-            // Convert to ArticleResponse
-            for (article_id, _) in paginated_articles {
-                if let Some(article) = storage.articles.get(article_id) {
-                    // Get author info
-                    if let Ok(author_info) = crate::services::user::get_user_social_info(article.author, Some(caller)) {
-                        // Count likes
-                        let likes_count = storage.likes.get(article_id)
-                            .map(|likes| likes.len() as u64)
-                            .unwrap_or(0);
-                        
-                        // Count comments
-                        let comments_count = storage.comments.values()
-                            .filter(|comment| 
-                                comment.parent_id == *article_id && 
-                                comment.parent_type == crate::storage::ParentType::Article &&
-                                comment.status == crate::storage::ContentStatus::Active
-                            )
-                            .count() as u64;
-                        
-                        // Get shares count
-                        let shares_count = storage.shares.get(article_id).copied().unwrap_or(0);
-                        
-                        // Create article response
-                        articles.push(crate::models::content::ArticleResponse {
-                            id: article.id.clone(),
-                            author: article.author,
-                            content: article.content.clone(),
-                            media_urls: article.media_urls.clone(),
-                            hashtags: article.hashtags.clone(),
-                            token_mentions: article.token_mentions.clone(),
-                            created_at: article.created_at,
-                            updated_at: article.updated_at,
-                            status: article.status.clone(),
-                            visibility: article.visibility.clone(),
-                            likes_count,
-                            comments_count,
-                            shares_count,
-                            author_info,
-                            news_reference: article.news_reference.clone().map(|nr| crate::models::content::NewsReferenceResponse {
-                                metadata: nr.metadata,
-                                canister_id: nr.canister_id,
-                            }),
-                        });
-                    }
-                }
-            }
-        }
-        
         // Determine if there are more items
-        let total_items = total_posts + total_articles;
+        let total_items = total_posts;
         let has_more = total_items > request.pagination.offset + request.pagination.limit;
         let next_offset = request.pagination.offset + request.pagination.limit;
         
         Ok(FeedResponse {
             posts,
-            articles,
             comments: vec![],
             has_more,
             next_offset
@@ -1329,28 +885,6 @@ pub fn get_collaborative_recommendations(user: Principal, limit: usize) -> Vec<(
             
             if score > 0.0 {
                 recommendations.push((id.clone(), ContentType::Post, score));
-            }
-        }
-        
-        // Check articles liked by similar users
-        for (id, article) in &storage.articles {
-            if article.status != crate::storage::ContentStatus::Active || user_liked_content.contains(id) {
-                continue;
-            }
-            
-            let mut score = 0.0;
-            
-            // Check if similar users liked this article
-            if let Some(likers) = storage.likes.get(id) {
-                for (similar_user, similarity) in &top_similar_users {
-                    if likers.contains(similar_user) {
-                        score += similarity;
-                    }
-                }
-            }
-            
-            if score > 0.0 {
-                recommendations.push((id.clone(), ContentType::Article, score));
             }
         }
         

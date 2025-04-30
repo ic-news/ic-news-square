@@ -134,7 +134,6 @@ pub struct TaskRequirements {
 
 #[derive(CandidType, Deserialize, Clone, Debug)]
 pub struct SocialInteractionRequirement {
-    pub share_count: Option<u64>,
     pub like_count: Option<u64>,
     pub follow_count: Option<u64>
 }
@@ -147,7 +146,6 @@ pub struct LoginStreakRequirement {
 #[derive(CandidType, Deserialize, Clone, Debug)]
 pub struct ContentCreationRequirement {
     pub comment_count: Option<u64>,
-    pub article_count: Option<u64>,
     pub post_count: Option<u64>,
     pub required_hashtags: Option<Vec<String>>
 }

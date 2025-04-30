@@ -30,7 +30,6 @@ test_create_custom_task() {
                 required_tokens = opt vec { \"IC\" };
                 required_nfts = opt vec { \"IC News NFT\" };
                 social_interaction = opt record {
-                    share_count = opt (1 : nat64);
                     like_count = opt (2 : nat64);
                     follow_count = opt (3 : nat64);
                 };
@@ -40,7 +39,6 @@ test_create_custom_task() {
                 content_creation = opt record {
                     comment_count = opt (1 : nat64);
                     post_count = opt (1 : nat64);
-                    article_count = opt (1 : nat64);
                 };
                 custom_requirements = opt vec { \"Custom requirement 1\" };
             };
@@ -130,7 +128,6 @@ test_task_with_expiration() {
                 required_tokens = opt vec { \"IC\" };
                 required_nfts = opt vec { \"IC News NFT\" };
                 social_interaction = opt record {
-                    share_count = opt (1 : nat64);
                     like_count = opt (2 : nat64);
                     follow_count = opt (3 : nat64);
                 };
@@ -140,7 +137,6 @@ test_task_with_expiration() {
                 content_creation = opt record {
                     comment_count = opt (1 : nat64);
                     post_count = opt (1 : nat64);
-                    article_count = opt (1 : nat64);
                 };
                 custom_requirements = opt vec { \"Custom requirement 1\" };
             };
@@ -207,7 +203,6 @@ test_task_with_expiration() {
                 required_tokens = opt vec { \"IC\" };
                 required_nfts = opt vec { \"IC News NFT\" };
                 social_interaction = opt record {
-                    share_count = opt (1 : nat64);
                     like_count = opt (2 : nat64);
                     follow_count = opt (3 : nat64);
                 };
@@ -217,7 +212,6 @@ test_task_with_expiration() {
                 content_creation = opt record {
                     comment_count = opt (1 : nat64);
                     post_count = opt (1 : nat64);
-                    article_count = opt (1 : nat64);
                 };
                 custom_requirements = opt vec { \"Custom requirement 1\" };
             };
@@ -282,7 +276,6 @@ test_task_chaining() {
                 required_tokens = opt vec { \"IC\" };
                 required_nfts = opt vec { \"IC News NFT\" };
                 social_interaction = opt record {
-                    share_count = opt (1 : nat64);
                     like_count = opt (2 : nat64);
                     follow_count = opt (3 : nat64);
                 };
@@ -292,7 +285,6 @@ test_task_chaining() {
                 content_creation = opt record {
                     comment_count = opt (1 : nat64);
                     post_count = opt (1 : nat64);
-                    article_count = opt (1 : nat64);
                 };
                 custom_requirements = opt vec { \"Custom requirement 1\" };
             };
@@ -318,7 +310,6 @@ test_task_chaining() {
                 required_tokens = opt vec { \"IC\" };
                 required_nfts = opt vec { \"IC News NFT\" };
                 social_interaction = opt record {
-                    share_count = opt (1 : nat64);
                     like_count = opt (2 : nat64);
                     follow_count = opt (3 : nat64);
                 };
@@ -328,7 +319,6 @@ test_task_chaining() {
                 content_creation = opt record {
                     comment_count = opt (1 : nat64);
                     post_count = opt (1 : nat64);
-                    article_count = opt (1 : nat64);
                 };
                 custom_requirements = opt vec { \"Custom requirement 1\" };
             };
@@ -354,7 +344,6 @@ test_task_chaining() {
                 required_tokens = opt vec { \"IC\" };
                 required_nfts = opt vec { \"IC News NFT\" };
                 social_interaction = opt record {
-                    share_count = opt (1 : nat64);
                     like_count = opt (2 : nat64);
                     follow_count = opt (3 : nat64);
                 };
@@ -364,7 +353,6 @@ test_task_chaining() {
                 content_creation = opt record {
                     comment_count = opt (1 : nat64);
                     post_count = opt (1 : nat64);
-                    article_count = opt (1 : nat64);
                 };
                 custom_requirements = opt vec { \"Custom requirement 1\" };
             };
@@ -397,15 +385,6 @@ test_task_chaining() {
     # Complete second task
     echo -e "${YELLOW}Completing second task in chain${NC}"
     
-    # Creating an effective proof format
-    local article_id=$(test_create_article)
-    
-    local complete_task2_request="(
-        record {
-            task_id = \"$task2_id\";
-            proof = opt \"$article_id\";
-        }
-    )"
     
     local result=$($DFX complete_task "$complete_task2_request")
     check_result "$result" "Completing chain task 2" true

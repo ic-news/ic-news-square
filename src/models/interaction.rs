@@ -9,13 +9,6 @@ pub struct LikeContentRequest {
 }
 
 #[derive(CandidType, Deserialize, Clone)]
-pub struct ShareContentRequest {
-    pub content_id: String,
-    pub content_type: ContentType,
-    pub platform: Option<SharingPlatform>,
-}
-
-#[derive(CandidType, Deserialize, Clone)]
 pub struct ReportContentRequest {
     pub content_id: String,
     pub content_type: ContentType,
@@ -33,7 +26,6 @@ pub struct InteractionResponse {
 #[derive(CandidType, Deserialize, Clone)]
 pub struct InteractionCountsResponse {
     pub likes: u64,
-    pub shares: u64,
     pub comments: u64,
     pub is_liked_by_caller: bool,
 }
@@ -51,13 +43,6 @@ pub struct LikesResponse {
     pub content_type: ContentType,
     pub likes: Vec<UserLikeInfo>,
     pub total: u64,
-}
-
-#[derive(CandidType, Deserialize, Clone)]
-pub struct SharesResponse {
-    pub content_id: String,
-    pub content_type: ContentType,
-    pub count: u64,
 }
 
 // Enums

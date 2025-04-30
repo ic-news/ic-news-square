@@ -1,9 +1,7 @@
 use candid::{CandidType, Deserialize, Principal};
 use crate::storage::{ContentStatus, ContentVisibility, ParentType};
 
-// Request DTOs
-
-// News reference for referencing news in posts and articles
+// News reference for referencing news in posts
 #[derive(CandidType, Deserialize, Clone)]
 pub struct NewsReferenceRequest {
     pub metadata: Vec<(String, String)>,
@@ -31,18 +29,6 @@ pub struct CreatePostRequest {
 }
 
 #[derive(CandidType, Deserialize, Clone)]
-pub struct CreateArticleRequest {
-    pub id: Option<String>,
-    pub content: String,
-    pub media_urls: Vec<String>,
-    pub hashtags: Vec<String>,
-    pub token_mentions: Option<Vec<String>>,
-    pub is_nsfw: Option<bool>,
-    pub visibility: Option<ContentVisibility>,
-    pub news_reference: Option<NewsReferenceRequest>,  // Optional reference to news
-}
-
-#[derive(CandidType, Deserialize, Clone)]
 pub struct CreateCommentRequest {
     pub id: Option<String>,
     pub content: String,
@@ -58,17 +44,6 @@ pub struct UpdatePostRequest {
     pub hashtags: Option<Vec<String>>,
     pub token_mentions: Option<Vec<String>>,
     pub tags: Option<Vec<String>>,  // Max 5 tags
-    pub visibility: Option<ContentVisibility>,
-    pub news_reference: Option<NewsReferenceRequest>,  // Optional reference to news
-}
-
-#[derive(CandidType, Deserialize, Clone)]
-pub struct UpdateArticleRequest {
-    pub id: String,
-    pub content: String,
-    pub media_urls: Option<Vec<String>>,
-    pub hashtags: Option<Vec<String>>,
-    pub token_mentions: Option<Vec<String>>,
     pub visibility: Option<ContentVisibility>,
     pub news_reference: Option<NewsReferenceRequest>,  // Optional reference to news
 }
@@ -95,26 +70,6 @@ pub struct PostResponse {
     pub visibility: ContentVisibility,
     pub likes_count: u64,
     pub comments_count: u64,
-    pub shares_count: u64,
-    pub author_info: crate::models::user::UserSocialResponse,
-    pub news_reference: Option<NewsReferenceResponse>,
-}
-
-#[derive(CandidType, Deserialize, Clone, Debug)]
-pub struct ArticleResponse {
-    pub id: String,
-    pub author: Principal,
-    pub content: String,
-    pub media_urls: Vec<String>,
-    pub hashtags: Vec<String>,
-    pub token_mentions: Vec<String>,
-    pub created_at: u64,
-    pub updated_at: u64,
-    pub status: ContentStatus,
-    pub visibility: ContentVisibility,
-    pub likes_count: u64,
-    pub comments_count: u64,
-    pub shares_count: u64,
     pub author_info: crate::models::user::UserSocialResponse,
     pub news_reference: Option<NewsReferenceResponse>,
 }
@@ -131,7 +86,6 @@ pub struct CommentResponse {
     pub status: ContentStatus,
     pub likes_count: u64,
     pub comments_count: u64,
-    pub shares_count: u64,
     pub visibility: ContentVisibility,
     pub child_comments: Vec<Box<CommentResponse>>,
     pub author_info: crate::models::user::UserSocialResponse,
@@ -184,13 +138,11 @@ pub type ModerateContentRequest = ContentModerationRequest;
 #[derive(CandidType, Deserialize, Clone, PartialEq, Eq, Debug)]
 pub enum ContentType {
     Post,
-    Article,
     Comment,
 }
 
 // Content constants
 pub const MAX_POST_LENGTH: usize = 2100;
-pub const MAX_ARTICLE_LENGTH: usize = 80000;
 pub const MAX_COMMENT_LENGTH: usize = 1000;
 pub const MAX_TITLE_LENGTH: usize = 200;
 pub const MAX_HASHTAGS: usize = 10;

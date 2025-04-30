@@ -59,16 +59,6 @@ pub fn get_likes(content_id: String, content_type: ContentType) -> SquareResult<
                     ));
                 }
             },
-            ContentType::Article => {
-                if !storage.articles.contains_key(&content_id) {
-                    return log_and_return(not_found_error(
-                        "Article", 
-                        &content_id, 
-                        MODULE, 
-                        FUNCTION
-                    ));
-                }
-            },
             ContentType::Comment => {
                 if !storage.comments.contains_key(&content_id) {
                     return log_and_return(not_found_error(
@@ -113,57 +103,6 @@ pub fn get_likes(content_id: String, content_type: ContentType) -> SquareResult<
     })
 }
 
-pub fn get_shares(content_id: String, content_type: ContentType) -> SquareResult<SharesResponse> {
-    const MODULE: &str = "services::interaction";
-    const FUNCTION: &str = "get_shares";
-    
-    
-    STORAGE.with(|storage| {
-        let storage = storage.borrow();
-        
-        // Verify content exists
-        match content_type {
-            ContentType::Post => {
-                if !storage.posts.contains_key(&content_id) {
-                    return log_and_return(not_found_error(
-                        "Post", 
-                        &content_id, 
-                        MODULE, 
-                        FUNCTION
-                    ));
-                }
-            },
-            ContentType::Article => {
-                if !storage.articles.contains_key(&content_id) {
-                    return log_and_return(not_found_error(
-                        "Article", 
-                        &content_id, 
-                        MODULE, 
-                        FUNCTION
-                    ));
-                }
-            },
-            ContentType::Comment => {
-                return log_and_return(invalid_operation_error(
-                    "get_shares", 
-                    "Cannot share comments", 
-                    MODULE, 
-                    FUNCTION
-                ));
-            },
-        }
-        
-        // Get share count
-        let count = storage.shares.get(&content_id).copied().unwrap_or(0);
-            
-        Ok(SharesResponse {
-            content_id: content_id.clone(),
-            content_type,
-            count,
-        })
-    })
-}
-
 // Internal function to handle like requests
 pub fn like_content_request(request: LikeContentRequest, caller: Principal) -> SquareResult<InteractionResponse> {
     const MODULE: &str = "services::interaction";
@@ -179,19 +118,6 @@ pub fn like_content_request(request: LikeContentRequest, caller: Principal) -> S
                     .ok_or_else(|| not_found_error("Post", &request.content_id, MODULE, FUNCTION))?;
                     
                 if post.status != ContentStatus::Active {
-                    return log_and_return(invalid_operation_error(
-                        "like_content", 
-                        "Cannot like inactive content", 
-                        MODULE, 
-                        FUNCTION
-                    ));
-                }
-            },
-            ContentType::Article => {
-                let article = storage.articles.get(&request.content_id)
-                    .ok_or_else(|| not_found_error("Article", &request.content_id, MODULE, FUNCTION))?;
-                    
-                if article.status != ContentStatus::Active {
                     return log_and_return(invalid_operation_error(
                         "like_content", 
                         "Cannot like inactive content", 
@@ -226,7 +152,6 @@ pub fn like_content_request(request: LikeContentRequest, caller: Principal) -> S
             // Update author stats
             let content_author = match request.content_type {
                 ContentType::Post => storage.posts.get(&request.content_id).map(|post| post.author),
-                ContentType::Article => storage.articles.get(&request.content_id).map(|article| article.author),
                 ContentType::Comment => storage.comments.get(&request.content_id).map(|comment| comment.author),
             };
             
@@ -249,7 +174,6 @@ pub fn like_content_request(request: LikeContentRequest, caller: Principal) -> S
             // Update author stats
             let content_author = match request.content_type {
                 ContentType::Post => storage.posts.get(&request.content_id).map(|post| post.author),
-                ContentType::Article => storage.articles.get(&request.content_id).map(|article| article.author),
                 ContentType::Comment => storage.comments.get(&request.content_id).map(|comment| comment.author),
             };
             
@@ -267,98 +191,6 @@ pub fn like_content_request(request: LikeContentRequest, caller: Principal) -> S
     })
 }
 
-// Share functionality
-pub fn share_content(content_id: String, content_type: ContentType, caller: Principal) -> SquareResult<()> {
-    let request = ShareContentRequest {
-        content_id,
-        content_type,
-        platform: None,
-    };
-    
-    share_content_request(request, caller).map(|_| ())
-}
-
-// Internal function to handle share requests
-pub fn share_content_request(request: ShareContentRequest, caller: Principal) -> SquareResult<InteractionResponse> {
-    const MODULE: &str = "services::interaction";
-    const FUNCTION: &str = "share_content_request";
-    
-    STORAGE.with(|storage| {
-        let mut storage = storage.borrow_mut();
-        
-        // Verify content exists and is active
-        match request.content_type {
-            ContentType::Post => {
-                let post = storage.posts.get(&request.content_id)
-                    .ok_or_else(|| not_found_error("Post", &request.content_id, MODULE, FUNCTION))?;
-                    
-                if post.status != ContentStatus::Active {
-                    return log_and_return(invalid_operation_error(
-                        "share_content", 
-                        "Cannot share inactive content", 
-                        MODULE, 
-                        FUNCTION
-                    ));
-                }
-            },
-            ContentType::Article => {
-                let article = storage.articles.get(&request.content_id)
-                    .ok_or_else(|| not_found_error("Article", &request.content_id, MODULE, FUNCTION))?;
-                    
-                if article.status != ContentStatus::Active {
-                    return log_and_return(invalid_operation_error(
-                        "share_content", 
-                        "Cannot share inactive content", 
-                        MODULE, 
-                        FUNCTION
-                    ));
-                }
-            },
-            ContentType::Comment => {
-                return log_and_return(invalid_operation_error(
-                    "share_content", 
-                    "Cannot share comments", 
-                    MODULE, 
-                    FUNCTION
-                ));
-            },
-        }
-        
-        // Increment share count
-        let shares = storage.shares.entry(request.content_id.clone()).or_insert(0);
-        *shares += 1;
-        
-        // Update author stats
-        let content_author = match request.content_type {
-            ContentType::Post => storage.posts.get(&request.content_id).map(|post| post.author),
-            ContentType::Article => storage.articles.get(&request.content_id).map(|article| article.author),
-            _ => None,
-        };
-        
-        if let Some(author) = content_author {
-            if let Some(stats) = storage.user_stats.get_mut(&author) {
-                stats.shares_received += 1;
-            }
-        }
-        
-        // Update user stats for the sharer
-        if let Some(user_stats) = storage.user_stats.get_mut(&caller) {
-            user_stats.share_count += 1;
-        }
-        
-        // Record share in sharded storage if available
-        if let Some(_platform) = &request.platform {
-            // We could store share details in a new sharded collection if needed
-            // For now, just log the platform used
-        }
-        
-        Ok(InteractionResponse {
-            success: true,
-            message: "Content shared successfully".to_string(),
-        })
-    })
-}
-
 // Report functionality
 pub fn report_content(request: ReportContentRequest, caller: Principal) -> SquareResult<()> {
     const MODULE: &str = "services::interaction";
@@ -373,16 +205,6 @@ pub fn report_content(request: ReportContentRequest, caller: Principal) -> Squar
                 if !storage.posts.contains_key(&request.content_id) {
                     return log_and_return(not_found_error(
                         "Post", 
-                        &request.content_id, 
-                        MODULE, 
-                        FUNCTION
-                    ));
-                }
-            },
-            ContentType::Article => {
-                if !storage.articles.contains_key(&request.content_id) {
-                    return log_and_return(not_found_error(
-                        "Article", 
                         &request.content_id, 
                         MODULE, 
                         FUNCTION
@@ -447,13 +269,6 @@ pub fn report_content(request: ReportContentRequest, caller: Principal) -> Squar
                     }
                 }
             },
-            ContentType::Article => {
-                if let Some(article) = storage.articles.get_mut(&request.content_id) {
-                    if article.status == ContentStatus::Active {
-                        article.status = ContentStatus::UnderReview;
-                    }
-                }
-            },
             ContentType::Comment => {
                 if let Some(comment) = storage.comments.get_mut(&request.content_id) {
                     if comment.status == ContentStatus::Active {
@@ -494,11 +309,6 @@ pub fn resolve_report(request: ResolveReportRequest, caller: Principal) -> Squar
                         post.status = ContentStatus::Removed;
                     }
                 },
-                ContentType::Article => {
-                    if let Some(article) = storage.articles.get_mut(&content_id) {
-                        article.status = ContentStatus::Removed;
-                    }
-                },
                 ContentType::Comment => {
                     if let Some(comment) = storage.comments.get_mut(&content_id) {
                         comment.status = ContentStatus::Removed;
@@ -512,13 +322,6 @@ pub fn resolve_report(request: ResolveReportRequest, caller: Principal) -> Squar
                     if let Some(post) = storage.posts.get_mut(&content_id) {
                         if post.status == ContentStatus::UnderReview {
                             post.status = ContentStatus::Active;
-                        }
-                    }
-                },
-                ContentType::Article => {
-                    if let Some(article) = storage.articles.get_mut(&content_id) {
-                        if article.status == ContentStatus::UnderReview {
-                            article.status = ContentStatus::Active;
                         }
                     }
                 },
@@ -581,21 +384,17 @@ pub fn get_interaction_counts(content_id: String, caller: Option<Principal>) -> 
             None => false,
         };
         
-        // Get shares count
-        let shares_count = storage.shares.get(&content_id).copied().unwrap_or(0);
-        
-        // Get comments count (assuming content is a post or article)
+        // Get comments count (assuming content is a post)
         let comments_count = storage.comments.values()
             .filter(|comment| 
                 comment.parent_id == content_id && 
-                (comment.parent_type == ParentType::Post || comment.parent_type == ParentType::Article) &&
+                comment.parent_type == ParentType::Post &&
                 comment.status == ContentStatus::Active
             )
             .count() as u64;
             
         Ok(InteractionCountsResponse {
             likes: likes_count,
-            shares: shares_count,
             comments: comments_count,
             is_liked_by_caller,
         })
@@ -611,7 +410,6 @@ pub fn view_content(request: ViewContentRequest, _caller: Principal) -> SquareRe
         // Update author stats
         let content_author = match request.content_type {
             ContentType::Post => storage.posts.get(&request.content_id).map(|post| post.author),
-            ContentType::Article => storage.articles.get(&request.content_id).map(|article| article.author),
             ContentType::Comment => return Ok(()), // Don't track views for comments
         };
         

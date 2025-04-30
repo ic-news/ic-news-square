@@ -398,9 +398,6 @@ thread_local! {
     pub static SHARDED_POSTS: RefCell<ShardedStorage<crate::storage::Post>> = 
         RefCell::new(ShardedStorage::default());
     
-    pub static SHARDED_ARTICLES: RefCell<ShardedStorage<crate::storage::Article>> = 
-        RefCell::new(ShardedStorage::default());
-    
     pub static SHARDED_COMMENTS: RefCell<ShardedStorage<crate::storage::Comment>> = 
         RefCell::new(ShardedStorage::default());
     

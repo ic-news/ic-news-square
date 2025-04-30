@@ -6,3 +6,4 @@ pub mod discovery;
 pub mod display;
 pub mod cycles;
 pub mod sharded_content;
+pub mod admin;

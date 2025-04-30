@@ -62,9 +62,20 @@ pub enum CyclesWarningSeverity {
 // Notification settings
 #[derive(CandidType, Deserialize, Clone)]
 pub struct NotificationSettings {
-    pub email_enabled: bool,
-    pub email_address: Option<String>,
-    pub notification_frequency_hours: u64,  // How often to send notifications
+    pub enabled: bool,
+    pub email: Option<String>,
+}
+
+// Heartbeat interval configuration request
+#[derive(CandidType, Deserialize, Clone)]
+pub struct UpdateHeartbeatIntervalRequest {
+    pub interval_hours: u64,  // Heartbeat interval in hours
+}
+
+// Heartbeat interval configuration response
+#[derive(CandidType, Deserialize, Clone)]
+pub struct HeartbeatIntervalResponse {
+    pub interval_hours: u64,  // Current heartbeat interval in hours
 }
 
 // Notification response

@@ -40,12 +40,17 @@ pub struct UserProfile {
 pub struct UserStats {
     pub principal: Principal,
     pub post_count: u64,
-    pub article_count: u64,
     pub comment_count: u64,
     pub like_count: u64,
-    pub share_count: u64,
     pub points: u64,
     pub reputation: u64,
+}
+
+// User Identifier
+#[derive(CandidType, Deserialize, Clone)]
+pub struct UserIdentifier {
+    pub principal: Option<Principal>,
+    pub handle: Option<String>,
 }
 
 // Request DTOs
@@ -106,7 +111,6 @@ pub struct NotificationPreferences {
     pub comments: bool,
     pub follows: bool,
     pub mentions: bool,
-    pub shares: bool,
     pub system: bool,
 }
 
@@ -166,10 +170,8 @@ pub struct UserSocialResponse {
 #[derive(CandidType, Deserialize, Clone)]
 pub struct UserStatsResponse {
     pub post_count: u64,
-    pub article_count: u64,
     pub comment_count: u64,
     pub like_count: u64,
-    pub share_count: u64,
     pub points: u64,
     pub reputation: u64,
 }
@@ -203,7 +205,6 @@ pub struct UserLeaderboardItem {
     pub rank: u64,
     pub last_claim_date: Option<u64>,
     pub consecutive_daily_logins: u64,
-    pub article_count: u64,
     pub post_count: u64,
     pub followers_count: u64,
 }
@@ -235,7 +236,6 @@ pub enum NotificationType {
     Like,
     Comment,
     Mention,
-    Share,
     System,
     Reward,
     ContentUpdate,

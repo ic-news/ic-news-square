@@ -9,9 +9,10 @@ use crate::models::display::{FeedResponse, ContentDetailResponse};
 use crate::storage_main::*;
 use crate::storage_main::Storage;
 use crate::utils::*;
+use crate::utils::content_utils::{calculate_content_length_excluding_base64, calculate_content_length_excluding_base64_and_html};
 use crate::{SquareError, SquareResult};
-use crate::storage::{STORAGE, Post, Article, Comment, ContentStatus, ParentType, ContentVisibility, NewsReference};
-// use crate::storage::sharded_ops::{insert_post_sharded};
+use crate::storage::{STORAGE, Post, Comment, ContentStatus, ParentType, ContentVisibility, NewsReference};
+use crate::storage::sharded_ops::insert_post_sharded;
 use crate::utils::error_handler::{content_too_long_error, not_found_error, unauthorized_error, log_and_return, validation_error};
 
 // Post management functions
@@ -19,12 +20,13 @@ pub fn create_post(request: CreatePostRequest, caller: Principal) -> SquareResul
     const MODULE: &str = "services::content";
     const FUNCTION: &str = "create_post";
     
-    // Validate content length
-    if request.content.len() > MAX_POST_LENGTH {
+    // Validate content length (excluding HTML tags and base64 images/videos)
+    let content_length = calculate_content_length_excluding_base64_and_html(&request.content);
+    if content_length > MAX_POST_LENGTH {
         return log_and_return(content_too_long_error(
             "Post", 
             MAX_POST_LENGTH, 
-            request.content.len(), 
+            content_length, 
             MODULE, 
             FUNCTION
         ));
@@ -108,8 +110,7 @@ pub fn create_post(request: CreatePostRequest, caller: Principal) -> SquareResul
         storage.posts.insert(id.clone(), post.clone());
         
         // Also store in sharded storage
-        // TODO: Implement sharded storage functionality
-        // insert_post_sharded(id.clone(), post.clone());
+        insert_post_sharded(id.clone(), post.clone());
         
         // Update user's posts list
         let user_posts = storage.user_posts.entry(caller).or_insert_with(Vec::new);
@@ -130,7 +131,7 @@ pub fn create_post(request: CreatePostRequest, caller: Principal) -> SquareResul
     });
     
     // After STORAGE borrowing ends, get user information
-    let author_info = crate::services::user::get_user_social_info(post.author, None)?;
+    let author_info = crate::services::user::get_user_social_info(post.author.to_string(), None)?;
     
     // Build response
     Ok(PostResponse {
@@ -147,7 +148,6 @@ pub fn create_post(request: CreatePostRequest, caller: Principal) -> SquareResul
         visibility: post.visibility,
         likes_count: 0,
         comments_count: 0,
-        shares_count: 0,
         author_info,
         news_reference: post.news_reference.map(|nr| NewsReferenceResponse {
             metadata: nr.metadata,
@@ -188,9 +188,6 @@ pub fn get_post(id: String) -> SquareResult<PostResponse> {
             )
             .count() as u64;
             
-        // Get shares count
-        let shares_count = storage.shares.get(&id).copied().unwrap_or(0);
-        
         // Clone post data for use after STORAGE borrowing ends
         let post_id = post.id.clone();
         let post_author = post.author;
@@ -207,16 +204,16 @@ pub fn get_post(id: String) -> SquareResult<PostResponse> {
         
         Ok((post_id, post_author, post_content, post_media_urls, post_hashtags, 
             post_token_mentions, post_tags, post_created_at, post_updated_at, 
-            post_status, post_visibility, likes_count, comments_count, shares_count, post_news_reference))
+            post_status, post_visibility, likes_count, comments_count, post_news_reference))
     })?;
     
     // Destructure the retrieved data
     let (post_id, post_author, post_content, post_media_urls, post_hashtags, 
          post_token_mentions, post_tags, post_created_at, post_updated_at, 
-         post_status, post_visibility, likes_count, comments_count, shares_count, post_news_reference) = post_data;
+         post_status, post_visibility, likes_count, comments_count, post_news_reference) = post_data;
     
     // After STORAGE borrowing ends, get user information
-    let author_info = crate::services::user::get_user_social_info(post_author, None)?;
+    let author_info = crate::services::user::get_user_social_info(post_author.to_string(), None)?;
     
     // Build response
     Ok(PostResponse {
@@ -233,7 +230,6 @@ pub fn get_post(id: String) -> SquareResult<PostResponse> {
         visibility: post_visibility,
         likes_count,
         comments_count,
-        shares_count,
         author_info,
         news_reference: post_news_reference.map(|nr| NewsReferenceResponse {
             metadata: nr.metadata,
@@ -251,10 +247,10 @@ pub fn get_posts(pagination: PaginationParams) -> SquareResult<PostsResponse> {
         let storage = storage.borrow();
         
         // Collect post data and statistics
-        let posts_data: Vec<(Post, u64, u64, u64)> = storage.posts.values()
+        let posts_data: Vec<(Post, u64, u64)> = storage.posts.values()
             .filter(|post| post.status == ContentStatus::Active)
             .map(|post| {
-                // Calculate likes, comments and shares count for each post
+                // Calculate likes, comments count for each post
                 let likes_count = storage.likes.get(&post.id)
                     .map(|likes| likes.len() as u64)
                     .unwrap_or(0);
@@ -267,12 +263,8 @@ pub fn get_posts(pagination: PaginationParams) -> SquareResult<PostsResponse> {
                     )
                     .count() as u64;
                 
-                let shares_count = storage.shares.get(&post.id)
-                    .copied()
-                    .unwrap_or(0);
-                
                 // Return post and statistics data
-                (post.clone(), likes_count, comments_count, shares_count)
+                (post.clone(), likes_count, comments_count)
             })
             .collect();
         
@@ -281,9 +273,9 @@ pub fn get_posts(pagination: PaginationParams) -> SquareResult<PostsResponse> {
     
     // After STORAGE borrowing ends, get user info for each post and build PostResponse
     let mut posts: Vec<PostResponse> = Vec::new();
-    for (post, likes_count, comments_count, shares_count) in post_data {
+    for (post, likes_count, comments_count) in post_data {
         // Get user information
-        if let Ok(author_info) = crate::services::user::get_user_social_info(post.author, None) {
+        if let Ok(author_info) = crate::services::user::get_user_social_info(post.author.to_string(), None) {
             // Build response
             posts.push(PostResponse {
                 id: post.id,
@@ -299,7 +291,6 @@ pub fn get_posts(pagination: PaginationParams) -> SquareResult<PostsResponse> {
                 likes_count,
                 tags: post.tags,
                 comments_count,
-                shares_count,
                 author_info,
                 news_reference: post.news_reference.map(|nr| NewsReferenceResponse {
                     metadata: nr.metadata,
@@ -361,12 +352,13 @@ pub fn update_post(request: UpdatePostRequest, caller: Principal) -> SquareResul
         }
         
         // Update fields if provided
-        // Validate content length
-        if request.content.len() > MAX_POST_LENGTH {
+        // Validate content length (excluding base64 images and videos)
+        let content_length = calculate_content_length_excluding_base64(&request.content);
+        if content_length > MAX_POST_LENGTH {
             return log_and_return(content_too_long_error(
                 "Post", 
                 MAX_POST_LENGTH, 
-                request.content.len(), 
+                content_length, 
                 MODULE, 
                 FUNCTION
             ));
@@ -450,25 +442,20 @@ pub fn update_post(request: UpdatePostRequest, caller: Principal) -> SquareResul
         let likes_count = storage.likes.get(&post_id)
             .map(|likes| likes.len() as u64)
             .unwrap_or(0);
-            
-        // Count shares
-        let shares_count = storage.shares.get(&post_id)
-            .map(|shares| *shares)
-            .unwrap_or(0);
         
         // Return all necessary data
         Ok((post_id, post_author, post_content, post_media_urls, post_hashtags, 
             post_token_mentions, post_created_at, post_updated_at, post_status, 
-            post_tags, post_visibility, likes_count, shares_count, post_news_reference))
+            post_tags, post_visibility, likes_count, post_news_reference))
     })?;
     
     // Destructure the retrieved data
     let (post_id, post_author, post_content, post_media_urls, post_hashtags, 
          post_token_mentions, post_created_at, post_updated_at, post_status, 
-         post_tags, post_visibility, likes_count, shares_count, post_news_reference) = post_data;
+         post_tags, post_visibility, likes_count, post_news_reference) = post_data;
     
     // After STORAGE's mutable borrow ends, get user information
-    let author_info = crate::services::user::get_user_social_info(post_author, None)?;
+    let author_info = crate::services::user::get_user_social_info(post_author.to_string(), None)?;
     
     // Return the post response
     Ok(PostResponse {
@@ -483,7 +470,6 @@ pub fn update_post(request: UpdatePostRequest, caller: Principal) -> SquareResul
         status: post_status,
         visibility: post_visibility,
         likes_count,
-        shares_count,
         tags: post_tags,
         comments_count: 0, // We'll need to count comments in a separate function
         author_info,
@@ -527,117 +513,14 @@ pub fn delete_post(id: String, caller: Principal) -> SquareResult<()> {
     })
 }
 
-// Article management functions
-pub fn create_article(request: CreateArticleRequest, caller: Principal) -> SquareResult<ArticleResponse> {
-    const MODULE: &str = "services::content";
-    const FUNCTION: &str = "create_article";
-    
-    // Validate content length
-    if request.content.len() > MAX_ARTICLE_LENGTH {
-        return log_and_return(content_too_long_error(
-            "Article", 
-            MAX_ARTICLE_LENGTH, 
-            request.content.len(), 
-            MODULE, 
-            FUNCTION
-        ));
-    }
-    
-    // Validate hashtags count
-    if request.hashtags.len() > MAX_HASHTAGS {
-        return log_and_return(validation_error(
-            &format!("Too many hashtags. Maximum allowed is {}", MAX_HASHTAGS),
-            MODULE,
-            FUNCTION
-        ));
-    }
-    
-    // Validate token mentions count
-    if let Some(token_mentions) = &request.token_mentions {
-        if token_mentions.len() > MAX_TOKEN_MENTIONS {
-            return log_and_return(validation_error(
-                &format!("Too many token mentions. Maximum allowed is {}", MAX_TOKEN_MENTIONS),
-                MODULE,
-                FUNCTION
-            ));
-        }
-    }
-    
-    // Validate media URLs count
-    if request.media_urls.len() > MAX_MEDIA_URLS {
-        return log_and_return(validation_error(
-            &format!("Too many media URLs. Maximum allowed is {}", MAX_MEDIA_URLS),
-            MODULE,
-            FUNCTION
-        ));
-    }
-    
-    // Create article and get article ID
-    let article_id = STORAGE.with(|storage| {
-        let mut storage = storage.borrow_mut();
-        
-        // Use provided ID or generate a new one
-        let id = if let Some(custom_id) = &request.id {
-            custom_id.clone()
-        } else {
-            // Generate unique ID
-            let content_counter = storage.content_counter + 1;
-            storage.content_counter = content_counter;
-            format!("article_{}", content_counter)
-        };
-        
-        // Create article object
-        let article = Article {
-            id: id.clone(),
-            author: caller,
-            content: request.content,
-            media_urls: request.media_urls.clone(),
-            hashtags: request.hashtags.clone(),
-            token_mentions: request.token_mentions.clone().unwrap_or_default(),
-            created_at: time() / 1_000_000,
-            updated_at: time() / 1_000_000,
-            status: ContentStatus::Active,
-            visibility: request.visibility.unwrap_or(ContentVisibility::Public),
-            news_reference: request.news_reference.map(|nr| NewsReference {
-                metadata: nr.metadata,
-                canister_id: nr.canister_id,
-            }),
-        };
-        
-        // Store article
-        storage.articles.insert(id.clone(), article);
-        
-        // Update user's articles list
-        let user_articles = storage.user_articles.entry(caller).or_insert_with(Vec::new);
-        user_articles.push(id.clone());
-        
-        // Update user stats
-        if let Some(user_stats) = storage.user_stats.get_mut(&caller) {
-            user_stats.article_count += 1;
-        }
-        
-        // Update trending topics
-        for hashtag in request.hashtags {
-            let count = storage.trending_topics.entry(hashtag).or_insert(0);
-            *count += 1;
-        }
-        
-        // Return article ID
-        id
-    });
-    
-    // After mutable borrowing of STORAGE ends, get article details
-    get_article(article_id)
-        .map_err(|e| SquareError::SystemError(format!("Failed to create article: {}", e)))
-}
-
 // Comment management functions
 pub fn create_comment(request: CreateCommentRequest, caller: Principal) -> SquareResult<CommentResponse> {
     const MODULE: &str = "services::content";
     const FUNCTION: &str = "create_comment";
     
-    // Validate content length
-    if request.content.len() > MAX_COMMENT_LENGTH {
+    // Validate content length (excluding HTML tags and base64 images/videos)
+    let content_length = calculate_content_length_excluding_base64_and_html(&request.content);
+    if content_length > MAX_COMMENT_LENGTH {
         return log_and_return(validation_error(
             &format!("Comment content exceeds maximum length of {} characters", MAX_COMMENT_LENGTH),
             MODULE,
@@ -659,16 +542,6 @@ pub fn create_comment(request: CreateCommentRequest, caller: Principal) -> Squar
                         MODULE, 
                         FUNCTION
                     ).with_details("Parent post not found"));
-                }
-            },
-            ParentType::Article => {
-                if !storage.articles.contains_key(&request.parent_id) {
-                    return log_and_return(not_found_error(
-                        "Article", 
-                        &request.parent_id, 
-                        MODULE, 
-                        FUNCTION
-                    ).with_details("Parent article not found"));
                 }
             },
             ParentType::Comment => {
@@ -730,7 +603,7 @@ pub fn create_comment(request: CreateCommentRequest, caller: Principal) -> Squar
         drop(storage);
         
         // Get author info
-        let author_info = crate::services::user::get_user_social_info(caller, None)?;
+        let author_info = crate::services::user::get_user_social_info(caller.to_string(), None)?;
         
         // Create comment response
         Ok(CommentResponse {
@@ -744,7 +617,6 @@ pub fn create_comment(request: CreateCommentRequest, caller: Principal) -> Squar
             status: comment.status.clone(),
             likes_count: 0,
             comments_count: 0,
-            shares_count: 0,
             visibility: ContentVisibility::Public,
             child_comments: Vec::<Box<CommentResponse>>::new(), // Empty vector of boxed comment responses
             author_info,
@@ -765,292 +637,12 @@ pub fn moderate_content(request: ContentModerationRequest) -> SquareResult<()> {
                 post.status = request.status;
                 post.updated_at = time() / 1_000_000;
             },
-            ContentType::Article => {
-                let article = storage.articles.get_mut(&request.content_id)
-                    .ok_or_else(|| SquareError::NotFound(format!("Article not found: {}", request.content_id)))?;
-                article.status = request.status;
-                article.updated_at = time() / 1_000_000;
-            },
             ContentType::Comment => {
                 let comment = storage.comments.get_mut(&request.content_id)
                     .ok_or_else(|| SquareError::NotFound(format!("Comment not found: {}", request.content_id)))?;
                 comment.status = request.status;
                 comment.updated_at = time() / 1_000_000;
             },
-        }
-        
-        Ok(())
-    })
-}
-
-// Article management functions
-pub fn get_article(id: String) -> SquareResult<ArticleResponse> {
-    // Get article data and statistics, but don't get user information yet
-    let article_data = STORAGE.with(|storage| {
-        let storage = storage.borrow();
-        
-        let article = storage.articles.get(&id)
-            .ok_or_else(|| SquareError::NotFound(format!("Article not found: {}", id)))?;
-            
-        // Check if article is active
-        if article.status != ContentStatus::Active {
-            return Err(SquareError::NotFound(format!("Article not available: {}", id)));
-        }
-        
-        // Count likes
-        let likes_count = storage.likes.get(&id)
-            .map(|likes| likes.len() as u64)
-            .unwrap_or(0);
-            
-        // Count comments
-        let comments_count = storage.comments.values()
-            .filter(|comment| 
-                comment.parent_id == id && 
-                comment.parent_type == ParentType::Article &&
-                comment.status == ContentStatus::Active
-            )
-            .count() as u64;
-            
-        // Count shares
-        let shares_count = storage.shares.get(&id)
-            .map(|shares| *shares)
-            .unwrap_or(0);
-        
-        // Clone article data for use after STORAGE borrowing ends
-        let article_id = article.id.clone();
-        let article_author = article.author;
-        let article_content = article.content.clone();
-        let article_media_urls = article.media_urls.clone();
-        let article_hashtags = article.hashtags.clone();
-        let article_token_mentions = article.token_mentions.clone();
-        let article_created_at = article.created_at;
-        let article_updated_at = article.updated_at;
-        let article_status = article.status.clone();
-        let article_visibility = article.visibility.clone();
-        let article_news_reference = article.news_reference.clone();
-        
-        Ok((article_id, article_author, article_content, article_media_urls,
-            article_hashtags, article_token_mentions, article_created_at,
-            article_updated_at, article_status, article_visibility, likes_count, comments_count, shares_count, article_news_reference))
-    })?;
-    
-    // Destructure the retrieved data
-    let (article_id, article_author, article_content, article_media_urls,
-        article_hashtags, article_token_mentions, article_created_at,
-        article_updated_at, article_status, article_visibility, likes_count, comments_count, shares_count, article_news_reference) = article_data;
-    
-    // After STORAGE borrowing ends, get user information
-    let author_info = crate::services::user::get_user_social_info(article_author, None)?;
-    
-    // Build response
-    Ok(ArticleResponse {
-        id: article_id,
-        author: article_author,
-        content: article_content,
-        media_urls: article_media_urls,
-        hashtags: article_hashtags,
-        token_mentions: article_token_mentions,
-        created_at: article_created_at,
-        updated_at: article_updated_at,
-        status: article_status,
-        visibility: article_visibility,
-        likes_count,
-        comments_count,
-        shares_count,
-        author_info,
-        news_reference: article_news_reference.map(|nr| NewsReferenceResponse {
-            metadata: nr.metadata,
-            canister_id: nr.canister_id,
-        }),
-    })
-}
-
-pub fn update_article(request: UpdateArticleRequest, caller: Principal) -> SquareResult<ArticleResponse> {
-
-    
-    // Validate content length if provided
-    // Validate content length
-    if request.content.len() > MAX_ARTICLE_LENGTH {
-        return Err(SquareError::ContentTooLong(format!(
-            "Article content exceeds maximum length of {} characters", MAX_ARTICLE_LENGTH
-        )));
-    }
-    
-    // Validate hashtags count if provided
-    if let Some(hashtags) = &request.hashtags {
-        if hashtags.len() > MAX_HASHTAGS {
-            return Err(SquareError::ValidationFailed(format!(
-                "Too many hashtags. Maximum allowed is {}", MAX_HASHTAGS
-            )));
-        }
-    }
-    
-    // Validate token mentions count if provided
-    if let Some(token_mentions) = &request.token_mentions {
-        if token_mentions.len() > MAX_TOKEN_MENTIONS {
-            return Err(SquareError::ValidationFailed(format!(
-                "Too many token mentions. Maximum allowed is {}", MAX_TOKEN_MENTIONS
-            )));
-        }
-    }
-    
-    // Validate media URLs count if provided
-    if let Some(media_urls) = &request.media_urls {
-        if media_urls.len() > MAX_MEDIA_URLS {
-            return Err(SquareError::ValidationFailed(format!(
-                "Too many media URLs. Maximum allowed is {}", MAX_MEDIA_URLS
-            )));
-        }
-    }
-    
-    // Update article
-    STORAGE.with(|storage| {
-        let mut storage = storage.borrow_mut();
-        
-        // First check if article exists
-        let article_exists = storage.articles.contains_key(&request.id);
-        if !article_exists {
-            return Err(SquareError::NotFound(format!("Article not found: {}", request.id)));
-        }
-        
-        // Get article info before mutable borrow
-        let article_author;
-        {
-            let article = storage.articles.get(&request.id).unwrap();
-            article_author = article.author;
-        }
-        
-        // Check ownership
-        if article_author != caller && is_admin().is_err() {
-            return Err(SquareError::Unauthorized("You can only update your own articles".to_string()));
-        }
-        
-        // Now get mutable reference
-        let article = storage.articles.get_mut(&request.id).unwrap();
-        
-        // Update required fields
-        article.content = request.content;
-        
-        if let Some(media_urls) = request.media_urls {
-            article.media_urls = media_urls;
-        }
-        
-        // Store old and new hashtags for later processing
-        let mut old_hashtags = Vec::new();
-        let mut new_hashtags = Vec::new();
-        
-        if let Some(hashtags) = request.hashtags {
-            old_hashtags = article.hashtags.clone();
-            new_hashtags = hashtags.clone();
-            article.hashtags = hashtags;
-        }
-        
-        // Process all article updates first
-        if let Some(token_mentions) = request.token_mentions.clone() {
-            article.token_mentions = token_mentions;
-        }
-
-        // Store any other fields we need to update after releasing the borrow
-        let hashtags_to_process = if !old_hashtags.is_empty() || !new_hashtags.is_empty() {
-            Some((old_hashtags, new_hashtags))
-        } else {
-            None
-        };
-        
-        // Release the article borrow completely
-        let _ = article;
-        
-        // Now we can safely process hashtags without conflicting borrows
-        if let Some((old_tags, new_tags)) = hashtags_to_process {
-            // Remove old hashtags from trending topics
-            for hashtag in &old_tags {
-                if let Some(count) = storage.trending_topics.get_mut(hashtag) {
-                    if *count > 0 {
-                        *count -= 1;
-                    }
-                }
-            }
-            
-            // Add new hashtags to trending topics
-            for hashtag in &new_tags {
-                let count = storage.trending_topics.entry(hashtag.clone()).or_insert(0);
-                *count += 1;
-            }
-        }
-        
-        // Store visibility update if provided
-        let visibility_update = request.visibility;
-        
-        // Get a fresh reference to the article after hashtag processing
-        let article = storage.articles.get_mut(&request.id).unwrap();
-        
-        // Apply visibility update if provided
-        if let Some(visibility) = visibility_update {
-            article.visibility = visibility;
-        }
-        
-        // Update news reference if provided
-        if let Some(news_reference) = request.news_reference {
-            article.news_reference = Some(NewsReference {
-                metadata: news_reference.metadata,
-                canister_id: news_reference.canister_id,
-            });
-        }
-        
-        // Update timestamp
-        article.updated_at = time() / 1_000_000;
-        
-        // Return updated article
-        get_article(request.id)
-    })
-}
-
-pub fn delete_article(id: String, caller: Principal) -> SquareResult<()> {
-    const MODULE: &str = "services::content";
-    const FUNCTION: &str = "delete_article";
-    
-    STORAGE.with(|storage| {
-        let mut storage = storage.borrow_mut();
-        
-        // Check if article exists and belongs to caller
-        let article = storage.articles.get(&id)
-            .ok_or_else(|| not_found_error(
-                "Article", 
-                &id, 
-                MODULE, 
-                FUNCTION
-            ).with_details(format!("Article not found: {}", id)))?;
-            
-        if article.author != caller && is_admin().is_err() {
-            return log_and_return(unauthorized_error(
-                "You can only delete your own articles", 
-                MODULE, 
-                FUNCTION
-            ));
-        }
-        
-        // Mark article as deleted instead of removing it
-        let article = storage.articles.get_mut(&id).unwrap();
-        article.status = ContentStatus::Deleted;
-        article.updated_at = time() / 1_000_000;
-        
-        // Clone hashtags to avoid borrow issues
-        let hashtags = article.hashtags.clone();
-        
-        // Remove hashtags from trending topics
-        for hashtag in &hashtags {
-            if let Some(count) = storage.trending_topics.get_mut(hashtag) {
-                if *count > 0 {
-                    *count -= 1;
-                }
-            }
-        }
-        
-        // Update user stats
-        if let Some(user_stats) = storage.user_stats.get_mut(&caller) {
-            if user_stats.article_count > 0 {
-                user_stats.article_count -= 1;
-            }
         }
         
         Ok(())
@@ -1084,7 +676,7 @@ pub fn get_comment(id: String, caller: Option<Principal>) -> SquareResult<Commen
         };
 
         // Get author info
-        let author_info = crate::services::user::get_user_social_info(comment.author, None)?;
+        let author_info = crate::services::user::get_user_social_info(comment.author.to_string(), None)?;
             
         // Get child comments
         let child_comments_full = get_child_comments(&storage, &comment.child_comments, caller);
@@ -1100,7 +692,6 @@ pub fn get_comment(id: String, caller: Option<Principal>) -> SquareResult<Commen
             status: comment.status.clone(),
             likes_count,
             comments_count: comment.child_comments.len() as u64,
-            shares_count: 0, // TODO: Implement share functionality
             visibility: ContentVisibility::Public, // Default to public for existing comments
             child_comments: child_comments_full, // Use the child comments we retrieved earlier
             author_info,
@@ -1113,8 +704,9 @@ pub fn update_comment(request: UpdateCommentRequest, caller: Principal) -> Squar
     const MODULE: &str = "services::content";
     const FUNCTION: &str = "update_comment";
     
-    // Validate content length
-    if request.content.len() > MAX_COMMENT_LENGTH {
+    // Validate content length (excluding HTML tags and base64 images/videos)
+    let content_length = calculate_content_length_excluding_base64_and_html(&request.content);
+    if content_length > MAX_COMMENT_LENGTH {
         return log_and_return(validation_error(
             &format!("Comment content exceeds maximum length of {} characters", MAX_COMMENT_LENGTH),
             MODULE,
@@ -1161,7 +753,7 @@ pub fn update_comment(request: UpdateCommentRequest, caller: Principal) -> Squar
         drop(storage);
         
         // Get author info
-        let author_info = crate::services::user::get_user_social_info(comment_author, None)?;
+        let author_info = crate::services::user::get_user_social_info(comment_author.to_string(), None)?;
         
         // Get likes and check if caller has liked with a new borrow
         let (likes_count, is_liked, child_comments_full) = STORAGE.with(|storage| {
@@ -1191,7 +783,6 @@ pub fn update_comment(request: UpdateCommentRequest, caller: Principal) -> Squar
             status: ContentStatus::Active,
             likes_count,
             comments_count: child_comments.len() as u64,
-            shares_count: 0, // TODO: Implement share functionality
             visibility: ContentVisibility::Public, // Default to public for existing comments
             child_comments: child_comments_full, // Use the child comments we retrieved earlier
             author_info,
@@ -1263,7 +854,7 @@ fn get_child_comments(storage: &Storage, child_ids: &Vec<String>, caller: Option
                 false
             };
             
-            let author_info = match crate::services::user::get_user_social_info(comment.author, None) {
+            let author_info = match crate::services::user::get_user_social_info(comment.author.to_string(), None) {
                 Ok(info) => info,
                 Err(_) => continue, // Skip if we can't get author info
             };
@@ -1282,7 +873,6 @@ fn get_child_comments(storage: &Storage, child_ids: &Vec<String>, caller: Option
                 status: comment.status.clone(),
                 likes_count,
                 comments_count: comment.child_comments.len() as u64,
-                shares_count: 0, // TODO: Implement share functionality
                 visibility: ContentVisibility::Public, // Default to public for existing comments
                 child_comments: nested_child_comments,
                 author_info,
@@ -1301,7 +891,6 @@ pub fn get_comments(parent_id: String, parent_type_str: String, pagination: Pagi
     // Convert parent_type string to enum
     let parent_type = match parent_type_str.to_lowercase().as_str() {
         "post" => ParentType::Post,
-        "article" => ParentType::Article,
         "comment" => ParentType::Comment,
         _ => return log_and_return(validation_error(
             &format!("Invalid parent type: {}", parent_type_str),
@@ -1318,11 +907,6 @@ pub fn get_comments(parent_id: String, parent_type_str: String, pagination: Pagi
             ParentType::Post => {
                 if !storage.posts.contains_key(&parent_id) {
                     return Err(SquareError::NotFound(format!("Parent post not found: {}", parent_id)));
-                }
-            },
-            ParentType::Article => {
-                if !storage.articles.contains_key(&parent_id) {
-                    return Err(SquareError::NotFound(format!("Parent article not found: {}", parent_id)));
                 }
             },
             ParentType::Comment => {
@@ -1352,7 +936,7 @@ pub fn get_comments(parent_id: String, parent_type_str: String, pagination: Pagi
                     false
                 };
                     
-                let author_info = match crate::services::user::get_user_social_info(comment.author, None) {
+                let author_info = match crate::services::user::get_user_social_info(comment.author.to_string(), None) {
                     Ok(info) => info,
                     Err(_) => return None,
                 };
@@ -1371,7 +955,6 @@ pub fn get_comments(parent_id: String, parent_type_str: String, pagination: Pagi
                     status: comment.status.clone(),
                     likes_count,
                     comments_count: comment.child_comments.len() as u64,
-                    shares_count: 0, // TODO: Implement share functionality
                     visibility: ContentVisibility::Public, // Default to public for existing comments
                     child_comments: child_comments,
                     author_info,
@@ -1395,7 +978,15 @@ pub fn get_comments(parent_id: String, parent_type_str: String, pagination: Pagi
     })
 }
 
-pub fn get_user_content(principal: Principal, content_type: Option<ContentType>, pagination: PaginationParams) -> SquareResult<FeedResponse> {
+pub fn get_user_content(user_identifier: String, content_type: Option<ContentType>, pagination: PaginationParams) -> SquareResult<FeedResponse> {
+    // Determine if the identifier is a Principal or a handle
+    let principal = if let Ok(principal) = Principal::from_text(&user_identifier) {
+        // It's a valid Principal
+        principal
+    } else {
+        // Try to find user by handle
+        crate::services::user::find_user_by_handle(&user_identifier)?
+    };
     STORAGE.with(|storage| {
         let storage = storage.borrow();
         
@@ -1405,7 +996,6 @@ pub fn get_user_content(principal: Principal, content_type: Option<ContentType>,
         }
         
         let mut posts = Vec::new();
-        let mut articles = Vec::new();
         let mut comments = Vec::new();
         
         // Get user's content based on content type
@@ -1418,24 +1008,6 @@ pub fn get_user_content(principal: Principal, content_type: Option<ContentType>,
                             if post.status == ContentStatus::Active {
                                 if let Ok(post_response) = get_post(post_id.clone()) {
                                     posts.push(post_response);
-                                }
-                            }
-                        }
-                    }
-                }
-            },
-            _ => {}
-        }
-        
-        match content_type {
-            None | Some(ContentType::Article) => {
-                // Get user's articles
-                if let Some(user_articles) = storage.user_articles.get(&principal) {
-                    for article_id in user_articles {
-                        if let Some(article) = storage.articles.get(article_id) {
-                            if article.status == ContentStatus::Active {
-                                if let Ok(article_response) = get_article(article_id.clone()) {
-                                    articles.push(article_response);
                                 }
                             }
                         }
@@ -1466,7 +1038,6 @@ pub fn get_user_content(principal: Principal, content_type: Option<ContentType>,
         
         // Sort by created_at (newest first)
         posts.sort_by(|a: &PostResponse, b: &PostResponse| b.created_at.cmp(&a.created_at));
-        articles.sort_by(|a: &ArticleResponse, b: &ArticleResponse| b.created_at.cmp(&a.created_at));
         comments.sort_by(|a: &CommentResponse, b: &CommentResponse| b.created_at.cmp(&a.created_at));
         
         // Apply pagination (simplified - in a real app we would paginate the combined list)
@@ -1474,24 +1045,18 @@ pub fn get_user_content(principal: Principal, content_type: Option<ContentType>,
         let end = std::cmp::min(start + pagination.limit, posts.len());
         posts = posts[start..end].to_vec();
         
-        let start = std::cmp::min(pagination.offset, articles.len());
-        let end = std::cmp::min(start + pagination.limit, articles.len());
-        articles = articles[start..end].to_vec();
-        
         let start = std::cmp::min(pagination.offset, comments.len());
         let end = std::cmp::min(start + pagination.limit, comments.len());
         comments = comments[start..end].to_vec();
         
         // Clone for use in has_more calculation
         let posts_len = posts.len();
-        let articles_len = articles.len();
         let comments_len = comments.len();
         
         Ok(FeedResponse {
             posts,
-            articles,
             comments,
-            has_more: posts_len >= pagination.limit || articles_len >= pagination.limit || comments_len >= pagination.limit,
+            has_more: posts_len >= pagination.limit || comments_len >= pagination.limit,
             next_offset: pagination.offset + pagination.limit,
         })
     })
@@ -1526,7 +1091,7 @@ pub fn get_content_detail(content_id: String, content_type: ContentType, caller:
                             false
                         };
                             
-                        let author_info = match crate::services::user::get_user_social_info(comment.author, None) {
+                        let author_info = match crate::services::user::get_user_social_info(comment.author.to_string(), None) {
                             Ok(info) => info,
                             Err(_) => return None,
                         };
@@ -1545,7 +1110,6 @@ pub fn get_content_detail(content_id: String, content_type: ContentType, caller:
                             status: comment.status.clone(),
                             likes_count,
                             comments_count: comment.child_comments.len() as u64,
-                            shares_count: 0, // TODO: Implement share functionality
                             visibility: ContentVisibility::Public, // Default to public for existing comments
                             child_comments: child_comments_full, // Use the child comments we retrieved earlier
                             author_info,
@@ -1556,66 +1120,6 @@ pub fn get_content_detail(content_id: String, content_type: ContentType, caller:
                 
                 Ok(ContentDetailResponse {
                     post: Some(post),
-                    article: None,
-                    comments,
-                    has_more_comments: false,
-                    next_comment_offset: 0,  
-                })
-            },
-            ContentType::Article => {
-                let article = get_article(content_id.clone())?;
-                
-                // Get comments for this article
-                let comments: Vec<CommentResponse> = storage.comments.values()
-                    .filter(|comment| 
-                        comment.parent_id == content_id && 
-                        comment.parent_type == ParentType::Article &&
-                        comment.status == ContentStatus::Active
-                    )
-                    .filter_map(|comment| {
-                        let likes = storage.likes.get(&comment.id);
-                        let likes_count = likes
-                            .map(|likes| likes.len() as u64)
-                            .unwrap_or(0);
-                        
-                        // Check if the caller has liked this comment
-                        let is_liked = if let Some(caller) = caller {
-                            likes.map(|likes| likes.contains(&caller)).unwrap_or(false)
-                        } else {
-                            false
-                        };
-                            
-                        let author_info = match crate::services::user::get_user_social_info(comment.author, None) {
-                            Ok(info) => info,
-                            Err(_) => return None,
-                        };
-                        
-                        // Get child comments
-                        let child_comments_full = get_child_comments(&storage, &comment.child_comments, caller);
-                            
-                        Some(CommentResponse {
-                            id: comment.id.clone(),
-                            author: comment.author,
-                            content: comment.content.clone(),
-                            parent_id: comment.parent_id.clone(),
-                            parent_type: comment.parent_type.clone(),
-                            created_at: comment.created_at,
-                            updated_at: comment.updated_at,
-                            status: comment.status.clone(),
-                            likes_count,
-                            comments_count: comment.child_comments.len() as u64,
-                            shares_count: 0, // TODO: Implement share functionality
-                            visibility: ContentVisibility::Public, // Default to public for existing comments
-                            child_comments: child_comments_full, // Use the child comments we retrieved earlier
-                            author_info,
-                            is_liked,
-                        })
-                    })
-                    .collect();
-                
-                Ok(ContentDetailResponse {
-                    post: None,
-                    article: Some(article),
                     comments,
                     has_more_comments: false,
                     next_comment_offset: 0,  

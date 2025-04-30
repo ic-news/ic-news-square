@@ -30,9 +30,8 @@ thread_local! {
     });
     static CYCLES_NOTIFICATIONS: RefCell<Vec<CyclesWarningNotification>> = RefCell::new(Vec::new());
     static NOTIFICATION_SETTINGS: RefCell<NotificationSettings> = RefCell::new(NotificationSettings {
-        email_enabled: false,
-        email_address: None,
-        notification_frequency_hours: 24,
+        enabled: false,
+        email: None,
     });
     static LAST_NOTIFICATION_TIME: RefCell<u64> = RefCell::new(0);
 }
@@ -267,7 +266,7 @@ pub fn acknowledge_notification(timestamp: u64, _caller: Principal) -> SquareRes
 
 // Update notification settings
 pub fn update_notification_settings(email_enabled: Option<bool>, email_address: Option<String>, 
-                                   notification_frequency_hours: Option<u64>, _caller: Principal) -> SquareResult<()> {
+                                   _notification_frequency_hours: Option<u64>, _caller: Principal) -> SquareResult<()> {
     const MODULE: &str = "services::cycles";
     const FUNCTION: &str = "update_notification_settings";
     
@@ -285,15 +284,11 @@ pub fn update_notification_settings(email_enabled: Option<bool>, email_address: 
         let mut settings_mut = settings.borrow_mut();
         
         if let Some(enabled) = email_enabled {
-            settings_mut.email_enabled = enabled;
+            settings_mut.enabled = enabled;
         }
         
         if let Some(address) = email_address {
-            settings_mut.email_address = Some(address);
-        }
-        
-        if let Some(frequency) = notification_frequency_hours {
-            settings_mut.notification_frequency_hours = frequency;
+            settings_mut.email = Some(address);
         }
     });
     
@@ -401,13 +396,14 @@ fn should_send_email_notification(current_time: u64) {
         let settings_ref = settings.borrow();
         
         // If email notifications are not enabled, return
-        if !settings_ref.email_enabled || settings_ref.email_address.is_none() {
+        if !settings_ref.enabled || settings_ref.email.is_none() {
             return;
         }
         
         LAST_NOTIFICATION_TIME.with(|last_time| {
             let last = *last_time.borrow();
-            let frequency_nanos = settings_ref.notification_frequency_hours * 3600_000_000_000;
+            // Default to 24 hours if not specified
+            let frequency_nanos = 24 * 3600_000_000_000;
             
             // Check if enough time has passed since the last notification
             if current_time - last > frequency_nanos {
@@ -420,7 +416,7 @@ fn should_send_email_notification(current_time: u64) {
                 
                 if has_critical {
                     // Send email notification (this is a placeholder - actual implementation would depend on your email service)
-                    send_email_notification(settings_ref.email_address.as_ref().unwrap());
+                    send_email_notification(settings_ref.email.as_ref().unwrap());
                     
                     // Update last notification time
                     *last_time.borrow_mut() = current_time;
@@ -433,15 +429,22 @@ fn should_send_email_notification(current_time: u64) {
 use ic_cdk::api::management_canister::http_request::{HttpMethod, TransformArgs, TransformContext, http_request, CanisterHttpRequestArgument, HttpResponse};
 
 // Send notification using Bark service
-fn send_email_notification(_email: &str) {
-
+fn send_email_notification(message: &str) {
+    // Log the notification message
+    ic_cdk::println!("Sending notification: {}", message);
+    
+    // Create a custom notification with the provided message
+    let custom_message = message.to_string();
     
     // Use spawn to run the async function
-    ic_cdk::spawn(async {
-        match send_bark_notification().await {
+    ic_cdk::spawn(async move {
+        // Call the Bark notification service with the custom message
+        match send_custom_bark_notification(&custom_message).await {
             Ok(_) => {
+                ic_cdk::println!("Successfully sent notification via Bark");
             }
-            Err(_e) => {
+            Err(e) => {
+                ic_cdk::println!("Failed to send notification via Bark: {}", e);
             }
         }
     });
@@ -515,6 +518,59 @@ fn transform_bark_response(args: TransformArgs) -> HttpResponse {
     }
 }
 
+// Send a custom notification message using Bark service
+async fn send_custom_bark_notification(message: &str) -> Result<(), String> {
+    // Bark API configuration
+    let api_key = "K8DaSYAVyVZMToSsL2DbFn";
+    let url = format!("https://api.day.app/{}", api_key);
+    
+    // Build the request parameters for Bark API
+    let title = "IC News Square Notification";
+    let body = message;
+    
+    // URL encode the parameters
+    let encoded_title = url_encode(title);
+    let encoded_body = url_encode(body);
+    
+    // Construct the full URL with parameters
+    let full_url = format!("{}/{}?body={}&group=IC-News-Square&isArchive=1", 
+                          url, encoded_title, encoded_body);
+    
+    // Build HTTP request
+    let request = CanisterHttpRequestArgument {
+        url: full_url,
+        method: HttpMethod::GET,
+        body: None,
+        max_response_bytes: Some(1024),
+        transform: Some(TransformContext::from_name(
+            "transform_bark_response".to_string(),
+            vec![]
+        )),
+        headers: vec![],
+    };
+    
+    // Send HTTP request
+    match http_request(request, 0).await {
+        Ok((response,)) => {
+            // Check if status code is in 200-299 range
+            let status_str = response.status.to_string();
+            let status_code = status_str.parse::<u16>().unwrap_or(0);
+            if status_code >= 200 && status_code < 300 {
+                Ok(())
+            } else {
+                Err(format!(
+                    "Bark API returned error status: {}. Body: {}",
+                    response.status,
+                    String::from_utf8_lossy(&response.body)
+                ))
+            }
+        }
+        Err((code, message)) => {
+            Err(format!("HTTP request failed with code {:?} and message: {}", code, message))
+        }
+    }
+}
+
 // Simple URL encoding function
 fn url_encode(s: &str) -> String {
     let mut result = String::new();
@@ -548,9 +604,6 @@ fn emergency_cycles_conservation() {
     // Simple implementation that focuses on logging the emergency
     // In a real implementation, we would modify configuration settings
     // to reduce cycles consumption
-    
-    // Log the emergency to the console
-    // 移除日志调用以节省 cycles
     
     // Notify administrators via email (if supported)
     send_email_notification("Emergency cycles conservation measures activated due to critically low cycles balance");

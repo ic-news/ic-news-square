@@ -51,7 +51,7 @@ show_help() {
     echo -e "  -u, --user USER            Set primary test user identity"
     echo -e "  -v, --verbose              Enable verbose output"
     echo -e "\nAvailable basic tests:"
-    echo -e "  register, user_profile, user_rewards, available_tasks, daily_post, weekly_article,"
+    echo -e "  register, user_profile, user_rewards, available_tasks, daily_post,"
     echo -e "  social_engagement, task_repetition, admin_reward, points_accumulation,"
     echo -e "  error_handling, multi_user"
     echo -e "\nAvailable advanced tests:"

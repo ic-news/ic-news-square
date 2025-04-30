@@ -27,29 +27,27 @@ impl Default for Storage {
             user_tasks: HashMap::new(),
             tasks: HashMap::new(),
             posts: HashMap::new(),
-            articles: HashMap::new(),
             comments: HashMap::new(),
             likes: HashMap::new(),
-            shares: HashMap::new(),
             user_posts: HashMap::new(),
-            user_articles: HashMap::new(),
             user_comments: HashMap::new(),
             trending_topics: BTreeMap::new(),
             previous_trending_topics: BTreeMap::new(),
             trending_content: Vec::new(),
             content_counter: 0,
             last_trending_update: 0,
-            community_guidelines: String::new(),
-            terms_of_service: String::new(),
+            community_guidelines: String::from("Default community guidelines"),
+            terms_of_service: String::from("Default terms of service"),
             admin: None,
             managers: HashSet::new(),
             reports: HashMap::new(),
             user_notifications: HashMap::new(),
+            heartbeat_interval_hours: 6, // Default to 6 hours
         }
     }
 }
 
-#[derive(CandidType, Deserialize)]
+#[derive(CandidType, Deserialize, Clone)]
 pub struct Storage {
     // Admin and managers
     pub admin: Option<Principal>,
@@ -57,7 +55,6 @@ pub struct Storage {
     
     // Content storage
     pub posts: HashMap<String, Post>,
-    pub articles: HashMap<String, Article>,
     pub comments: HashMap<String, Comment>,
     
     // User data
@@ -67,12 +64,10 @@ pub struct Storage {
     
     // Content indexing
     pub user_posts: HashMap<Principal, Vec<String>>,
-    pub user_articles: HashMap<Principal, Vec<String>>,
     pub user_comments: HashMap<Principal, Vec<String>>,
     
     // Interactions
     pub likes: HashMap<String, HashSet<Principal>>,
-    pub shares: HashMap<String, u64>,
     pub reports: HashMap<String, ContentReport>,
     
     // Discovery
@@ -90,6 +85,7 @@ pub struct Storage {
     pub last_trending_update: u64,
     pub community_guidelines: String,
     pub terms_of_service: String,
+    pub heartbeat_interval_hours: u64, // Configurable heartbeat interval in hours
     
     // Notifications
     pub user_notifications: HashMap<Principal, Vec<crate::models::user::UserNotification>>,
@@ -113,26 +109,11 @@ pub struct Post {
 }
 
 #[derive(CandidType, Deserialize, Clone)]
-pub struct Article {
-    pub id: String,
-    pub author: Principal,
-    pub content: String,
-    pub media_urls: Vec<String>,
-    pub hashtags: Vec<String>,
-    pub token_mentions: Vec<String>,
-    pub created_at: u64,
-    pub updated_at: u64,
-    pub status: ContentStatus,
-    pub visibility: ContentVisibility,
-    pub news_reference: Option<NewsReference>,
-}
-
-#[derive(CandidType, Deserialize, Clone)]
 pub struct Comment {
     pub id: String,
     pub author: Principal,
     pub content: String,
-    pub parent_id: String, // ID of the post, article, or comment this is replying to
+    pub parent_id: String, // ID of the post or comment this is replying to
     pub parent_type: ParentType,
     pub created_at: u64,
     pub updated_at: u64,
@@ -171,12 +152,9 @@ pub struct UserProfile {
 pub struct UserStats {
     pub principal: Principal,
     pub post_count: u64,
-    pub article_count: u64,
     pub comment_count: u64,
     pub likes_received: u64,
-    pub shares_received: u64,
     pub views_received: u64,
-    pub share_count: u64,
 }
 
 // Rewards and tasks
@@ -237,7 +215,6 @@ pub enum ContentVisibility {
 #[derive(CandidType, Deserialize, Clone, PartialEq, Copy, Debug)]
 pub enum ParentType {
     Post,
-    Article,
     Comment,
 }
 

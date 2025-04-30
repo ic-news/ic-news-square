@@ -441,6 +441,7 @@ dependencies = [
  "ic-cdk-macros 0.17.1",
  "ic-cdk-timers",
  "ic-http-certification",
+ "lazy_static",
  "num-traits",
  "rand",
  "regex",

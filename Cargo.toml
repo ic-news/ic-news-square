@@ -13,6 +13,7 @@ ic-cdk-macros = "0.17.1"
 ic-cdk-timers = "0.10"
 serde = { version = "1.0", features = ["derive"] }
 regex = "1.10.2"
+lazy_static = "1.4.0"
 rand = { version = "0.8.5", features = ["small_rng"] }
 
 ic-http-certification = "3.0.3"

@@ -153,12 +153,6 @@ test_get_available_tasks() {
         echo -e "${RED}Default task 'daily_post' not found${NC}"
     fi
     
-    if [[ $result == *"weekly_article"* ]]; then
-        echo -e "${GREEN}Found default task: weekly_article${NC}"
-    else
-        echo -e "${RED}Default task 'weekly_article' not found${NC}"
-    fi
-    
     if [[ $result == *"social_engagement"* ]]; then
         echo -e "${GREEN}Found default task: social_engagement${NC}"
     else
@@ -200,38 +194,6 @@ test_create_post() {
     
     # Return post ID for later use
     echo "$post_id"
-}
-
-# Test creating an article
-test_create_article() {
-    echo -e "\n${BLUE}Test: Creating an article${NC}"
-    
-    switch_identity $USER1
-    local principal=$(get_principal)
-    
-    local title="Test article - $(date)"
-    local content="This is a test article for testing the weekly_article task. $(date)"
-    local article_id="article_$(date +%s)"
-    
-    echo -e "${YELLOW}Creating article ID: $article_id${NC}"
-    
-    local create_article_request="(
-        record {
-            id = opt \"$article_id\";
-            content = \"$content\";
-            hashtags = vec { \"test\" };
-            media_urls = vec {};
-            token_mentions = opt vec {};
-            is_nsfw = opt false;
-            visibility = opt variant { Public };
-        }
-    )"
-    
-    local result=$($DFX create_article "$create_article_request")
-    check_result "$result" "Creating article" true
-    
-    # Return article ID for later use
-    echo "$article_id"
 }
 
 # Test social engagement (likes and comments)
@@ -319,7 +281,7 @@ run_specific_test() {
     
     # Check if it's a basic test
     case $test_name in
-        "register"|"user_profile"|"user_rewards"|"available_tasks"|"daily_post"|"weekly_article"|"social_engagement"|"task_repetition"|"admin_reward"|"points_accumulation"|"error_handling"|"multi_user")
+        "register"|"user_profile"|"user_rewards"|"available_tasks"|"daily_post"|"social_engagement"|"task_repetition"|"admin_reward"|"points_accumulation"|"error_handling"|"multi_user")
             run_specific_basic_test "$test_name"
             ;;
         "custom_task"|"expiration"|"chaining"|"reset"|"bulk"|"leaderboard"|"checkin")
@@ -327,7 +289,7 @@ run_specific_test() {
             ;;
         *)
             echo -e "${RED}Unknown test: $test_name${NC}"
-            echo -e "Available basic tests: register, user_profile, user_rewards, available_tasks, daily_post, weekly_article, social_engagement, task_repetition, admin_reward, points_accumulation, error_handling, multi_user"
+            echo -e "Available basic tests: register, user_profile, user_rewards, available_tasks, daily_post, social_engagement, task_repetition, admin_reward, points_accumulation, error_handling, multi_user"
             echo -e "Available advanced tests: custom_task, expiration, chaining, reset, bulk, leaderboard, checkin"
             exit 1
             ;;

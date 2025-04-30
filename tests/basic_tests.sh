@@ -38,41 +38,6 @@ test_complete_daily_post_task() {
     fi
 }
 
-# Test completing weekly_article task
-test_complete_weekly_article_task() {
-    echo -e "\n${BLUE}Test: Completing weekly article task${NC}"
-    
-    switch_identity $USER1
-    local principal=$(get_principal)
-    
-    # Create an article
-    local article_id=$(test_create_article)
-    
-    echo -e "${YELLOW}Attempting to complete weekly_article task, article ID: $article_id${NC}"
-    
-    # Use simple proof format to avoid serialization issues
-    local simple_proof="article_simple_$(date +%s)"
-    local complete_task_request="(
-        record {
-            task_id = \"weekly_article\";
-            proof = opt \"$simple_proof\";
-        }
-    )"
-    
-    local result=$($DFX complete_task "$complete_task_request")
-    check_result "$result" "Completing weekly_article task" true
-    
-    # Check if points have been added
-    echo -e "${YELLOW}Checking user points${NC}"
-    local rewards_after=$(test_get_user_rewards)
-    
-    if [[ $rewards_after == *"points"* ]]; then
-        echo -e "${GREEN}User points updated${NC}"
-    else
-        echo -e "${RED}User points record not found or not updated${NC}"
-    fi
-}
-
 # Test completing social_engagement task
 test_complete_social_engagement_task() {
     echo -e "\n${BLUE}Test: Completing social engagement task${NC}"
@@ -412,28 +377,25 @@ run_basic_tests() {
     echo -e "\n${YELLOW}Step 4: Test daily_post task${NC}"
     test_complete_daily_post_task
     
-    echo -e "\n${YELLOW}Step 5: Test weekly_article task${NC}"
-    test_complete_weekly_article_task
-    
-    echo -e "\n${YELLOW}Step 6: Test social_engagement task${NC}"
+    echo -e "\n${YELLOW}Step 5: Test social_engagement task${NC}"
     test_complete_social_engagement_task
     
-    echo -e "\n${YELLOW}Step 7: Get final user points${NC}"
+    echo -e "\n${YELLOW}Step 6: Get final user points${NC}"
     test_get_user_rewards
     
-    echo -e "\n${YELLOW}Step 8: Test task repetition${NC}"
+    echo -e "\n${YELLOW}Step 7: Test task repetition${NC}"
     test_task_repetition
     
-    echo -e "\n${YELLOW}Step 9: Test admin reward allocation${NC}"
+    echo -e "\n${YELLOW}Step 8: Test admin reward allocation${NC}"
     test_admin_reward_allocation
     
-    echo -e "\n${YELLOW}Step 10: Test points accumulation${NC}"
+    echo -e "\n${YELLOW}Step 9: Test points accumulation${NC}"
     test_points_accumulation
     
-    echo -e "\n${YELLOW}Step 11: Test error handling${NC}"
+    echo -e "\n${YELLOW}Step 10: Test error handling${NC}"
     test_error_handling
     
-    echo -e "\n${YELLOW}Step 12: Test multi-user scenario${NC}"
+    echo -e "\n${YELLOW}Step 11: Test multi-user scenario${NC}"
     test_multi_user_scenario
     
     echo -e "\n${GREEN}=== Basic tests completed ===${NC}"
@@ -458,9 +420,6 @@ run_specific_basic_test() {
             ;;
         "daily_post")
             test_complete_daily_post_task
-            ;;
-        "weekly_article")
-            test_complete_weekly_article_task
             ;;
         "social_engagement")
             test_complete_social_engagement_task

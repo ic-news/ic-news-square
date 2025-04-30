@@ -1,5 +1,5 @@
 use candid::{CandidType, Deserialize};
-use crate::models::content::{PostResponse, ArticleResponse, CommentResponse};
+use crate::models::content::{PostResponse, CommentResponse};
 use crate::models::user::UserSocialResponse;
 use crate::models::discovery::TrendingTopicResponse;
 
@@ -7,7 +7,6 @@ use crate::models::discovery::TrendingTopicResponse;
 #[derive(CandidType, Deserialize, Clone, Debug)]
 pub struct FeedResponse {
     pub posts: Vec<PostResponse>,
-    pub articles: Vec<ArticleResponse>,
     pub comments: Vec<CommentResponse>,
     pub has_more: bool,
     pub next_offset: usize,
@@ -16,7 +15,6 @@ pub struct FeedResponse {
 #[derive(CandidType, Deserialize, Clone, Debug)]
 pub struct UserFeedResponse {
     pub posts: Vec<PostResponse>,
-    pub articles: Vec<ArticleResponse>,
     pub user: UserSocialResponse,
     pub has_more: bool,
     pub next_offset: usize,
@@ -25,7 +23,6 @@ pub struct UserFeedResponse {
 #[derive(CandidType, Deserialize, Clone, Debug)]
 pub struct ContentDetailResponse {
     pub post: Option<PostResponse>,
-    pub article: Option<ArticleResponse>,
     pub comments: Vec<CommentResponse>,
     pub has_more_comments: bool,
     pub next_comment_offset: usize,
@@ -44,7 +41,6 @@ pub struct DashboardResponse {
 #[derive(CandidType, Deserialize, Clone)]
 pub struct CreatorCenterResponse {
     pub recent_posts: Vec<PostResponse>,
-    pub recent_articles: Vec<ArticleResponse>,
     pub content_stats: ContentStatsResponse,
     pub available_tasks: Vec<CreatorTaskResponse>,
 }
@@ -52,10 +48,8 @@ pub struct CreatorCenterResponse {
 #[derive(CandidType, Deserialize, Clone)]
 pub struct ContentStatsResponse {
     pub total_posts: u64,
-    pub total_articles: u64,
     pub total_comments: u64,
     pub total_likes_received: u64,
-    pub total_shares_received: u64,
     pub total_views: u64,
     pub engagement_rate: f64,
 }
@@ -86,7 +80,6 @@ pub struct NotificationResponse {
 pub enum NotificationType {
     Like,
     Comment,
-    Share,
     Follow,
     Mention,
     TaskCompleted,

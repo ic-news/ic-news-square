@@ -2,8 +2,8 @@ use candid::Principal;
 
 use crate::models::content::*;
 use crate::models::error::{SquareError, SquareResult};
-use crate::storage::{STORAGE, Post, Article, Comment, ContentStatus, ParentType, ContentVisibility};
-use crate::storage::sharded::{SHARDED_POSTS, SHARDED_ARTICLES, SHARDED_COMMENTS, SHARDED_LIKES};
+use crate::storage::{STORAGE, Post, Comment, ContentStatus, ParentType, ContentVisibility};
+use crate::storage::sharded::{SHARDED_POSTS, SHARDED_COMMENTS, SHARDED_LIKES};
 use crate::utils::error_handler::*;
 
 // Helper function to get a post from sharded storage
@@ -31,34 +31,6 @@ pub fn get_post_sharded(id: &str) -> SquareResult<Post> {
             .cloned()
             .ok_or_else(|| {
                 not_found_error("Post", id, MODULE, FUNCTION)
-            })
-    })
-}
-
-// Helper function to get an article from sharded storage
-pub fn get_article_sharded(id: &str) -> SquareResult<Article> {
-    const MODULE: &str = "services::sharded_content";
-    const FUNCTION: &str = "get_article_sharded";
-    
-    
-    // Try to get from sharded storage first
-    let article = SHARDED_ARTICLES.with(|sharded_articles| {
-        let mut sharded_articles = sharded_articles.borrow_mut();
-        sharded_articles.get(id)
-    });
-    
-    // If found in sharded storage, return it
-    if let Some(article) = article {
-        return Ok(article);
-    }
-    
-    // Otherwise, try to get from main storage
-    STORAGE.with(|storage| {
-        let storage = storage.borrow();
-        storage.articles.get(id)
-            .cloned()
-            .ok_or_else(|| {
-                not_found_error("Article", id, MODULE, FUNCTION)
             })
     })
 }
@@ -182,12 +154,6 @@ pub fn get_post(id: String) -> SquareResult<PostResponse> {
             .count() as u64
     });
     
-    // Get shares count
-    let shares_count = STORAGE.with(|storage| {
-        let storage = storage.borrow();
-        storage.shares.get(&id).copied().unwrap_or(0)
-    });
-    
     // Create post response
     Ok(PostResponse {
         id: post.id,
@@ -202,90 +168,9 @@ pub fn get_post(id: String) -> SquareResult<PostResponse> {
         status: post.status,
         likes_count,
         comments_count,
-        shares_count,
         visibility: post.visibility,
         author_info,
         news_reference: post.news_reference.map(|nr| crate::models::content::NewsReferenceResponse {
-            metadata: nr.metadata,
-            canister_id: nr.canister_id,
-        }),
-    })
-}
-
-// Get article with sharded storage
-pub fn get_article(id: String) -> SquareResult<ArticleResponse> {
-    // Get the article from sharded storage
-    let article = get_article_sharded(&id)?;
-    
-    // Check if article is active
-    if article.status != ContentStatus::Active {
-        return Err(SquareError::NotFound(format!("Article not found: {}", id)));
-    }
-    
-    // Get author profile
-    let author_info = STORAGE.with(|storage| {
-        let storage = storage.borrow();
-        if let Some(profile) = storage.user_profiles.get(&article.author) {
-            crate::models::user::UserSocialResponse {
-                principal: article.author,
-                username: profile.username.clone(),
-                handle: profile.handle.clone(),
-                avatar: profile.avatar.clone(),
-                bio: profile.bio.clone(),
-                is_followed_by_caller: false,
-                is_following: false,
-                followers_count: profile.followers.len() as u64,
-                following_count: profile.followed_users.len() as u64,
-            }
-        } else {
-            crate::models::user::UserSocialResponse {
-                principal: article.author,
-                username: "Unknown".to_string(),
-                handle: "unknown".to_string(),
-                avatar: "".to_string(),
-                bio: "".to_string(),
-                is_followed_by_caller: false,
-                is_following: false,
-                followers_count: 0,
-                following_count: 0,
-            }
-        }
-    });
-    
-    // Get likes count
-    let likes_count = get_likes_count_sharded(&id) as u64;
-    
-    // Get comments count
-    let comments_count = STORAGE.with(|storage| {
-        let storage = storage.borrow();
-        storage.comments.values()
-            .filter(|c| c.parent_id == id && c.parent_type == ParentType::Article && c.status == ContentStatus::Active)
-            .count() as u64
-    });
-    
-    // Get shares count
-    let shares_count = STORAGE.with(|storage| {
-        let storage = storage.borrow();
-        storage.shares.get(&id).copied().unwrap_or(0)
-    });
-    
-    // Create article response
-    Ok(ArticleResponse {
-        id: article.id,
-        author: article.author,
-        content: article.content,
-        media_urls: article.media_urls,
-        hashtags: article.hashtags,
-        token_mentions: article.token_mentions,
-        created_at: article.created_at,
-        updated_at: article.updated_at,
-        status: article.status,
-        visibility: article.visibility,
-        likes_count,
-        comments_count,
-        shares_count,
-        author_info,
-        news_reference: article.news_reference.map(|nr| crate::models::content::NewsReferenceResponse {
             metadata: nr.metadata,
             canister_id: nr.canister_id,
         }),
@@ -347,7 +232,6 @@ pub fn get_comment(id: String, caller: Option<Principal>) -> SquareResult<Commen
         status: comment.status,
         likes_count: comment.likes_count,
         comments_count: 0, // Will be populated by caller if needed
-        shares_count: 0,   // Will be populated by caller if needed
         visibility: ContentVisibility::Public, // Default visibility for comments
         child_comments: Vec::<Box<CommentResponse>>::new(), // Empty for now, will be populated by caller if needed
         author_info,
@@ -360,14 +244,6 @@ pub fn insert_post_sharded(id: String, post: Post) {
     SHARDED_POSTS.with(|sharded_posts| {
         let mut sharded_posts = sharded_posts.borrow_mut();
         sharded_posts.insert(id, post);
-    });
-}
-
-// Insert an article into sharded storage
-pub fn insert_article_sharded(id: String, article: Article) {
-    SHARDED_ARTICLES.with(|sharded_articles| {
-        let mut sharded_articles = sharded_articles.borrow_mut();
-        sharded_articles.insert(id, article);
     });
 }
 

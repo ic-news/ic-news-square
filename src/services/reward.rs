@@ -17,7 +17,7 @@ use crate::utils::error_handler::*;
 
 
 // Initialize default tasks with configurable active state
-pub fn init_default_tasks(enable_daily_post: bool, enable_weekly_article: bool, enable_social_engagement: bool) {
+pub fn init_default_tasks(enable_daily_post: bool, enable_social_engagement: bool) {
     STORAGE.with(|storage| {
         let mut storage = storage.borrow_mut();
         
@@ -41,22 +41,6 @@ pub fn init_default_tasks(enable_daily_post: bool, enable_weekly_article: bool, 
                 canister_id: ic_cdk::id(),
             };
             
-            // Weekly article task
-            let weekly_article = TaskDefinition {
-                id: "weekly_article".to_string(),
-                title: "Weekly Article".to_string(),
-                description: "Create an article weekly to earn points".to_string(),
-                points: 200,
-                task_type: TaskType::Weekly,
-                completion_criteria: "Create at least one article per week".to_string(),
-                expiration_time: None,
-                created_at: time(),
-                updated_at: time(),
-                is_active: enable_weekly_article,
-                requirements: None,
-                canister_id: ic_cdk::id(),
-            };
-            
             // Social engagement task
             let social_engagement = TaskDefinition {
                 id: "social_engagement".to_string(),
@@ -75,7 +59,6 @@ pub fn init_default_tasks(enable_daily_post: bool, enable_weekly_article: bool, 
             
             // Add tasks to storage
             storage.tasks.insert(daily_post.id.clone(), daily_post);
-            storage.tasks.insert(weekly_article.id.clone(), weekly_article);
             storage.tasks.insert(social_engagement.id.clone(), social_engagement);
         }
     });
@@ -83,7 +66,7 @@ pub fn init_default_tasks(enable_daily_post: bool, enable_weekly_article: bool, 
 
 // Default initialization with all tasks enabled
 pub fn init_default_tasks_all_enabled() {
-    init_default_tasks(true, true, true);
+    init_default_tasks(true, true);
 }
 
 // Initialize default tasks only if no tasks exist
@@ -140,7 +123,7 @@ pub fn complete_task(request: CompleteTaskRequest, caller: Principal) -> SquareR
         storage.tasks.get(&request.task_id).cloned()
     });
     
-    let task_type = match task_info {
+    let _task_type = match task_info {
         Some(task) => task.task_type,
         None => {
             match request.task_id.as_str() {
@@ -179,7 +162,6 @@ pub fn complete_task(request: CompleteTaskRequest, caller: Principal) -> SquareR
                 // Check for hardcoded tasks from get_available_tasks
                 match request.task_id.as_str() {
                     "daily_post" => (50, TaskType::Daily, None),
-                    "weekly_article" => (200, TaskType::Weekly, None),
                     "social_engagement" => (100, TaskType::Daily, None),
                     _ => return Err(SquareError::NotFound(format!("Task with ID {} not found", request.task_id)))
                 }
@@ -212,32 +194,40 @@ pub fn complete_task(request: CompleteTaskRequest, caller: Principal) -> SquareR
         let already_completed = SHARDED_USER_TASKS.with(|tasks| {
             let mut tasks = tasks.borrow_mut();
             if let Some(user_tasks) = tasks.get(&user_tasks_key) {
-                if user_tasks.completed_tasks.contains_key(&request.task_id) {
-                    match task_type {
-                        TaskType::Daily => {
-                            // For daily tasks, check if it was completed today
-                            let completion_time = *user_tasks.completed_tasks.get(&request.task_id).unwrap();
-                            let now = time() / 1_000_000;
-                            let today_start = now - (now % SECONDS_IN_DAY);
-                            let completion_day = completion_time / 1_000_000 - (completion_time / 1_000_000 % SECONDS_IN_DAY);
+                match task_type {
+                    TaskType::Daily => {
+                        // For daily tasks, check if THIS SPECIFIC daily task was completed today
+                        // Using day_id approach to prevent multiple completions of the same daily task in the same day
+                        let current_day_id = time() / 1_000_000_000 / 86400;
+                        
+                        // Check if this specific task was completed today
+                        if let Some(completion_time) = user_tasks.completed_tasks.get(&request.task_id) {
+                            // Convert completion time to day_id
+                            let completion_day_id = completion_time / 1_000_000_000 / 86400;
                             
-                            // If completed on the same day, reject completion again
-                            completion_day == today_start
-                        },
-                        TaskType::Weekly => {
-                            // For weekly tasks, check if it was completed this week
+                            // If the completion day_id matches current day_id, task was already completed today
+                            if completion_day_id == current_day_id {
+                                return true; // Already completed this specific daily task today
+                            }
+                        }
+                        false
+                    },
+                    TaskType::Weekly => {
+                        // For weekly tasks, check if ANY weekly task was completed this week
+                        let now = time() / 1_000_000;
+                        let week_start = now - (now % (SECONDS_IN_DAY * 7));
+                        
+                        // Check if this specific task was completed this week
+                        if user_tasks.completed_tasks.contains_key(&request.task_id) {
                             let completion_time = *user_tasks.completed_tasks.get(&request.task_id).unwrap();
-                            let now = time() / 1_000_000;
-                            let week_start = now - (now % (SECONDS_IN_DAY * 7));
                             let completion_week = completion_time / 1_000_000 - (completion_time / 1_000_000 % (SECONDS_IN_DAY * 7));
-                            
-                            // If completed in the same week, reject completion again
-                            completion_week == week_start
-                        },
-                        _ => true // For one-time tasks, always consider as completed
-                    }
-                } else {
-                    false
+                            if completion_week == week_start {
+                                return true;
+                            }
+                        }
+                        false
+                    },
+                    _ => user_tasks.completed_tasks.contains_key(&request.task_id) // For one-time tasks, check if this specific task was completed
                 }
             } else {
                 false

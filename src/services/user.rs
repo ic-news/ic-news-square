@@ -135,11 +135,8 @@ pub fn register_user(request: RegisterUserRequest, caller: Principal) -> SquareR
         let stats = UserStats {
             principal: caller,
             post_count: 0,
-            article_count: 0,
-            share_count: 0,
             comment_count: 0,
             likes_received: 0,
-            shares_received: 0,
             views_received: 0,
         };
         
@@ -283,10 +280,16 @@ pub fn update_user_profile(request: UpdateProfileRequest, caller: Principal) -> 
     })
 }
 
-pub fn get_user_profile(principal: Principal) -> SquareResult<UserProfileResponse> {
+pub fn get_user_profile(user_identifier: String) -> SquareResult<UserProfileResponse> {
     const MODULE: &str = "services::user";
     const FUNCTION: &str = "get_user_profile";
-    
+    let principal = if let Ok(principal) = Principal::from_text(&user_identifier) {
+        // It's a valid Principal
+        principal
+    } else {
+        // Try to find user by handle
+        crate::services::user::find_user_by_handle(&user_identifier)?
+    };
     STORAGE.with(|storage| {
         let storage = storage.borrow();
         
@@ -323,9 +326,17 @@ pub fn get_user_profile(principal: Principal) -> SquareResult<UserProfileRespons
     })
 }
 
-pub fn get_user_full_profile(principal: Principal) -> SquareResult<UserResponse> {
+pub fn get_user_full_profile(user_identifier: String) -> SquareResult<UserResponse> {
     const MODULE: &str = "services::user";
     const FUNCTION: &str = "get_user_full_profile";
+    
+    let principal = if let Ok(principal) = Principal::from_text(&user_identifier) {
+        // It's a valid Principal
+        principal
+    } else {
+        // Try to find user by handle
+        crate::services::user::find_user_by_handle(&user_identifier)?
+    };
     
     STORAGE.with(|storage| {
         let storage = storage.borrow();
@@ -357,10 +368,8 @@ pub fn get_user_full_profile(principal: Principal) -> SquareResult<UserResponse>
             updated_at: user.last_login, // Use last_login as updated_at
             stats: UserStatsResponse {
                 post_count: stats.post_count,
-                article_count: stats.article_count,
                 comment_count: stats.comment_count,
                 like_count: stats.likes_received, // Map likes_received to like_count
-                share_count: stats.shares_received, // Map shares_received to share_count
                 points: 0, // Default points
                 reputation: 0, // Default reputation
             },
@@ -527,10 +536,17 @@ pub fn update_user_role(request: UserRoleUpdateRequest) -> SquareResult<()> {
 }
 
 // Follower management functions
-pub fn get_followers(principal: Principal, caller: Option<Principal>) -> SquareResult<Vec<UserSocialResponse>> {
+pub fn get_followers(user_identifier: String, caller: Option<Principal>) -> SquareResult<Vec<UserSocialResponse>> {
     const MODULE: &str = "services::user";
     const FUNCTION: &str = "get_followers";
     
+    let principal = if let Ok(principal) = Principal::from_text(&user_identifier) {
+        // It's a valid Principal
+        principal
+    } else {
+        // Try to find user by handle
+        crate::services::user::find_user_by_handle(&user_identifier)?
+    };
     
     STORAGE.with(|storage| {
         let storage = storage.borrow();
@@ -576,10 +592,17 @@ pub fn get_followers(principal: Principal, caller: Option<Principal>) -> SquareR
     })
 }
 
-pub fn get_following(principal: Principal, caller: Option<Principal>) -> SquareResult<Vec<UserSocialResponse>> {
+pub fn get_following(user_identifier: String, caller: Option<Principal>) -> SquareResult<Vec<UserSocialResponse>> {
     const MODULE: &str = "services::user";
     const FUNCTION: &str = "get_following";
     
+    let principal = if let Ok(principal) = Principal::from_text(&user_identifier) {
+        // It's a valid Principal
+        principal
+    } else {
+        // Try to find user by handle
+        crate::services::user::find_user_by_handle(&user_identifier)?
+    };
     
     STORAGE.with(|storage| {
         let storage = storage.borrow();
@@ -640,9 +663,9 @@ pub fn get_user_leaderboard(pagination: PaginationParams) -> SquareResult<UserLe
         for principal in storage.user_profiles.keys() {
             if let (Some(profile), Some(user_rewards)) = (storage.user_profiles.get(principal), storage.user_rewards.get(principal)) {
                 // Get user stats or create default values if not found
-                let (post_count, article_count) = match storage.user_stats.get(principal) {
-                    Some(stats) => (stats.post_count, stats.article_count),
-                    None => (0, 0), // Default values if stats not found
+                let post_count = match storage.user_stats.get(principal) {
+                    Some(stats) => stats.post_count, // Default values if stats not found
+                    None => 0, // Default value if stats not found
                 };
                 
                 // Create leaderboard item
@@ -655,7 +678,6 @@ pub fn get_user_leaderboard(pagination: PaginationParams) -> SquareResult<UserLe
                     rank: 0,
                     last_claim_date: user_rewards.last_claim_date,
                     consecutive_daily_logins: 0,
-                    article_count,
                     post_count,
                     followers_count: profile.followers.len() as u64,
                 });
@@ -774,7 +796,7 @@ pub fn get_user_notifications(principal: Principal, pagination: PaginationParams
         let mut notification_responses = Vec::new();
         for notification in paginated_notifications {
             let related_user_info = if let Some(user_principal) = notification.related_user {
-                match get_user_social_info(user_principal, Some(principal)) {
+                match get_user_social_info(user_principal.to_string(), Some(principal)) {
                     Ok(info) => Some(info),
                     Err(_) => None,
                 }
@@ -887,7 +909,6 @@ pub fn get_privacy_settings(principal: Principal) -> SquareResult<UserPrivacySet
                 comments: true,
                 follows: true,
                 mentions: true,
-                shares: true,
                 system: true,
             },
         }))
@@ -929,10 +950,17 @@ pub fn sync_user_data(principal: Principal) -> SquareResult<()> {
     })
 }
 
-pub fn get_user_social_info(principal: Principal, caller: Option<Principal>) -> SquareResult<UserSocialResponse> {
+pub fn get_user_social_info(user_identifier: String, caller: Option<Principal>) -> SquareResult<UserSocialResponse> {
     const MODULE: &str = "services::user";
     const FUNCTION: &str = "get_user_social_info";
     
+    let principal = if let Ok(principal) = Principal::from_text(&user_identifier) {
+        // It's a valid Principal
+        principal
+    } else {
+        // Try to find user by handle
+        crate::services::user::find_user_by_handle(&user_identifier)?
+    };
     
     STORAGE.with(|storage| {
         let storage = storage.borrow();
@@ -971,5 +999,30 @@ pub fn get_user_social_info(principal: Principal, caller: Option<Principal>) -> 
         };
         
         Ok(response)
+    })
+}
+
+// Find user principal by handle
+pub fn find_user_by_handle(handle: &str) -> SquareResult<Principal> {
+    const MODULE: &str = "services::user";
+    const FUNCTION: &str = "find_user_by_handle";
+    
+    STORAGE.with(|storage| {
+        let storage = storage.borrow();
+        
+        // Find user with matching handle
+        for (principal, profile) in storage.user_profiles.iter() {
+            if profile.handle == handle {
+                return Ok(*principal);
+            }
+        }
+        
+        // If no user found with that handle
+        log_and_return(not_found_error(
+            "UserProfile", 
+            handle, 
+            MODULE, 
+            FUNCTION
+        ).with_details(format!("No user found with handle: {}", handle)))
     })
 }

@@ -23,7 +23,6 @@ pub struct ContentFilter {
 
 #[derive(CandidType, Deserialize, Clone, PartialEq, Debug)]
 pub enum SortOption {
-    MostShared,
     MostCommented,
     Trending,
     MostLiked,
