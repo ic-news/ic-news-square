@@ -3,3 +3,4 @@ target
 scripts/push.sh
 .dfx
 **/.dfx
+docs/roadmap.md

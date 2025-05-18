@@ -2,9 +2,8 @@ use candid::Principal;
 
 use crate::models::display::*;
 use crate::models::error::SquareResult;
-use crate::services::content;
-use crate::services::discovery;
-use crate::services::user;
+use crate::services::{content, discovery, user};
+use crate::storage::STORAGE;
 
 
 // Feed display functions
@@ -63,6 +62,7 @@ pub fn get_dashboard_feed(principal: Principal, pagination: crate::models::conte
             comments: vec![],
             has_more: false,
             next_offset: 0,
+            total: 0,
         }
     };
     
@@ -93,7 +93,7 @@ pub fn get_user_feed(principal: Principal, pagination: crate::models::content::P
     let user_profile = user::get_user_social_info(principal.to_string(), None)?;
     
     // Get user content
-    let user_content = content::get_user_content(principal.to_text(), None, pagination)?;
+    let user_content = content::get_user_content(principal.to_text(), None, crate::models::content::PaginationParams { offset: pagination.offset, limit: pagination.limit })?;
     
     Ok(UserFeedResponse {
         posts: user_content.posts,
@@ -114,7 +114,7 @@ pub fn get_creator_center(principal: Principal) -> SquareResult<CreatorCenterRes
     let recent_posts = content::get_user_content(
         principal.to_text(), 
         Some(crate::models::content::ContentType::Post), 
-        crate::models::content::PaginationParams { offset: 0, limit: 5 }
+        crate::models::content::PaginationParams { offset: Some(0), limit: Some(5) }
     )?;
     
     // Get content stats
@@ -142,18 +142,19 @@ pub fn get_creator_center(principal: Principal) -> SquareResult<CreatorCenterRes
 
 // Helper function to get content stats
 fn get_content_stats(principal: Principal) -> SquareResult<ContentStatsResponse> {
-    // This would typically query the storage for user stats
-    // For now, return placeholder data
-    crate::storage::STORAGE.with(|storage| {
-        let storage = storage.borrow();
+    // Get user stats from main storage
+    STORAGE.with(|storage| {
+        let store = storage.borrow();
         
-        let user_stats = storage.user_stats.get(&principal)
+        // Get user stats from main storage
+        let user_stats = store.user_stats.as_ref()
+            .and_then(|stats| stats.get(&principal))
             .ok_or_else(|| crate::models::error::SquareError::NotFound("User stats not found".to_string()))?;
         
-        // Calculate engagement rate (likes + views)
-        let total_interactions = user_stats.likes_received;
-        let engagement_rate = if user_stats.views_received > 0 {
-            (total_interactions as f64) / (user_stats.views_received as f64)
+        // Calculate engagement rate (likes + reputation)
+        let total_interactions = user_stats.like_count;
+        let engagement_rate = if user_stats.reputation > 0 {
+            (total_interactions as f64) / (user_stats.reputation as f64)
         } else {
             0.0
         };
@@ -161,8 +162,8 @@ fn get_content_stats(principal: Principal) -> SquareResult<ContentStatsResponse>
         Ok(ContentStatsResponse {
             total_posts: user_stats.post_count,
             total_comments: user_stats.comment_count,
-            total_likes_received: user_stats.likes_received,
-            total_views: user_stats.views_received,
+            total_likes_received: user_stats.like_count,
+            total_views: user_stats.reputation,
             engagement_rate,
         })
     })

@@ -1,5 +1,6 @@
 use candid::{CandidType, Deserialize, Principal};
-use std::collections::HashSet;
+use std::collections::{HashSet, HashMap};
+use crate::models::notification::NotificationType;
 
 // Constants for validation
 pub const MIN_USERNAME_LENGTH: usize = 3;
@@ -11,11 +12,14 @@ pub const HANDLE_PATTERN: &str = r"^[a-zA-Z0-9_]{3,30}$";
 #[derive(CandidType, Deserialize, Clone)]
 pub struct User {
     pub principal: Principal,
-    pub created_at: u64,
+    pub registered_at: u64,
     pub last_login: u64,
+    pub interests: Vec<String>,
     pub status: UserStatus,
     pub role: UserRole,
 }
+
+
 
 #[derive(CandidType, Deserialize, Clone)]
 pub struct UserProfile {
@@ -24,8 +28,8 @@ pub struct UserProfile {
     pub handle: String,
     pub bio: String,
     pub avatar: String,
-    pub social_links: Vec<(String, String)>,
     pub interests: Vec<String>,
+    pub social_links: Vec<(String, String)>,
     pub followers: HashSet<Principal>,
     pub followed_users: HashSet<Principal>,
     pub followed_topics: HashSet<String>,
@@ -83,6 +87,17 @@ pub struct UserPrivacySettings {
     pub notification_preferences: NotificationPreferences,
 }
 
+impl Default for UserPrivacySettings {
+    fn default() -> Self {
+        Self {
+            profile_visibility: ProfileVisibility::Public,
+            content_visibility: ContentVisibility::Public,
+            interaction_preferences: InteractionPreferences::default(),
+            notification_preferences: NotificationPreferences::default(),
+        }
+    }
+}
+
 #[derive(CandidType, Deserialize, Clone, PartialEq)]
 pub enum ProfileVisibility {
     Public,
@@ -105,6 +120,17 @@ pub struct InteractionPreferences {
     pub show_likes: bool,
 }
 
+impl Default for InteractionPreferences {
+    fn default() -> Self {
+        Self {
+            allow_comments: true,
+            allow_mentions: true,
+            allow_follows: true,
+            show_likes: true,
+        }
+    }
+}
+
 #[derive(CandidType, Deserialize, Clone, PartialEq)]
 pub struct NotificationPreferences {
     pub likes: bool,
@@ -112,6 +138,18 @@ pub struct NotificationPreferences {
     pub follows: bool,
     pub mentions: bool,
     pub system: bool,
+}
+
+impl Default for NotificationPreferences {
+    fn default() -> Self {
+        Self {
+            likes: true,
+            comments: true,
+            follows: true,
+            mentions: true,
+            system: true,
+        }
+    }
 }
 
 #[derive(CandidType, Deserialize, Clone)]
@@ -152,6 +190,10 @@ pub struct UserProfileResponse {
     pub status: UserStatus,
     pub role: UserRole,
     pub is_following: bool,
+    pub interests: Vec<String>,
+    pub created_at: u64,
+    pub updated_at: u64,
+    pub privacy_settings: Option<UserPrivacySettings>,
 }
 
 #[derive(CandidType, Deserialize, Clone, Debug)]
@@ -161,10 +203,28 @@ pub struct UserSocialResponse {
     pub handle: String,
     pub avatar: String,
     pub bio: String,
+    pub interests: Vec<String>,
     pub followers_count: u64,
     pub following_count: u64,
     pub is_following: bool,
     pub is_followed_by_caller: bool,
+}
+
+impl Default for UserSocialResponse {
+    fn default() -> Self {
+        Self {
+            principal: Principal::anonymous(),
+            username: String::new(),
+            handle: String::new(),
+            avatar: String::new(),
+            bio: String::new(),
+            interests: Vec::new(),
+            followers_count: 0,
+            following_count: 0,
+            is_following: false,
+            is_followed_by_caller: false,
+        }
+    }
 }
 
 #[derive(CandidType, Deserialize, Clone)]
@@ -201,12 +261,14 @@ pub struct UserLeaderboardItem {
     pub username: String,
     pub handle: String,
     pub avatar: String,
-    pub points: u64,
     pub rank: u64,
-    pub last_claim_date: Option<u64>,
+    pub last_claim_date: u64,
     pub consecutive_daily_logins: u64,
-    pub post_count: u64,
     pub followers_count: u64,
+    pub post_count: u64,
+    pub comment_count: u64,
+    pub like_count: u64,
+    pub reputation: u64,
 }
 
 #[derive(CandidType, Deserialize, Clone)]
@@ -217,61 +279,18 @@ pub struct UserLeaderboardResponse {
     pub next_offset: u64,
 }
 
-// Notification structures
-#[derive(CandidType, Deserialize, Clone)]
-pub struct UserNotification {
-    pub id: String,
-    pub user_principal: Principal,
-    pub notification_type: NotificationType,
-    pub content: String,
-    pub related_entity_id: Option<String>,
-    pub related_user: Option<Principal>,
-    pub is_read: bool,
-    pub created_at: u64,
-}
-
-#[derive(CandidType, Deserialize, Clone, PartialEq)]
-pub enum NotificationType {
-    Follow,
-    Like,
-    Comment,
-    Mention,
-    System,
-    Reward,
-    ContentUpdate,
-}
-
-#[derive(CandidType, Deserialize, Clone)]
-pub struct NotificationResponse {
-    pub id: String,
-    pub notification_type: NotificationType,
-    pub content: String,
-    pub related_entity_id: Option<String>,
-    pub related_user: Option<UserSocialResponse>,
-    pub is_read: bool,
-    pub created_at: u64,
-}
-
-#[derive(CandidType, Deserialize, Clone)]
-pub struct NotificationsResponse {
-    pub notifications: Vec<NotificationResponse>,
-    pub total_count: u64,
-    pub unread_count: u64,
-    pub has_more: bool,
-    pub next_offset: u64,
-}
-
-// Enums
-#[derive(CandidType, Deserialize, Clone, PartialEq)]
+#[derive(CandidType, Deserialize, Clone, PartialEq, Default)]
 pub enum UserStatus {
+    #[default]
     Active,
     Suspended,
     Banned,
     Restricted,
 }
 
-#[derive(CandidType, Deserialize, Clone, PartialEq)]
+#[derive(CandidType, Deserialize, Clone, PartialEq, Default)]
 pub enum UserRole {
+    #[default]
     User,
     Admin,
     Moderator,

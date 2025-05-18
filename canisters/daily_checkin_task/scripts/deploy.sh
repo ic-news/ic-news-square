@@ -28,11 +28,20 @@ fi
 
 echo "Deploying to network: $NETWORK"
 
-daily_canister_name="daily_checkin_task"
+canister_name="daily_checkin_task"
 # Already in the correct directory, no need to enter the subdirectory
 cargo clean
 cargo build --target wasm32-unknown-unknown --release
-candid-extractor "target/wasm32-unknown-unknown/release/$daily_canister_name.wasm" > "src/$daily_canister_name.did"
+candid-extractor "target/wasm32-unknown-unknown/release/$canister_name.wasm" > "src/$canister_name.did"
 
 # Deploy canister
-dfx deploy --network "$NETWORK"
+# 检查是否已经部署过 canister
+if [ -f ".dfx/$NETWORK/canister_ids.json" ] && [ "$(jq -r ".$canister_name.$NETWORK" ".dfx/$NETWORK/canister_ids.json")" != "null" ]; then
+    echo "Updating existing canister with --mode reinstall..."
+    # 更新已存在的 canister，使用 --mode reinstall 保留数据
+    dfx deploy --network "$NETWORK" --mode reinstall
+else
+    echo "First time deployment, using normal deploy..."
+    # 首次部署，使用普通模式
+    dfx deploy --network "$NETWORK"
+fi

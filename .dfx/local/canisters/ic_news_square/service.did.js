@@ -93,24 +93,12 @@ export const idlFactory = ({ IDL }) => {
     'Ok' : TaskCompletionResponse,
     'Err' : SquareError,
   });
-  const NewsReferenceRequest = IDL.Record({
-    'metadata' : IDL.Vec(IDL.Tuple(IDL.Text, IDL.Text)),
-    'canister_id' : IDL.Principal,
-  });
-  const ContentVisibility = IDL.Variant({
-    'Private' : IDL.Null,
-    'FollowersOnly' : IDL.Null,
-    'Public' : IDL.Null,
-  });
-  const CreateArticleRequest = IDL.Record({
+  const ParentType = IDL.Variant({ 'Post' : IDL.Null, 'Comment' : IDL.Null });
+  const CreateCommentRequest = IDL.Record({
     'id' : IDL.Opt(IDL.Text),
-    'is_nsfw' : IDL.Opt(IDL.Bool),
     'content' : IDL.Text,
-    'hashtags' : IDL.Vec(IDL.Text),
-    'media_urls' : IDL.Vec(IDL.Text),
-    'news_reference' : IDL.Opt(NewsReferenceRequest),
-    'token_mentions' : IDL.Opt(IDL.Vec(IDL.Text)),
-    'visibility' : IDL.Opt(ContentVisibility),
+    'parent_id' : IDL.Text,
+    'parent_type' : ParentType,
   });
   const ContentStatus = IDL.Variant({
     'UnderReview' : IDL.Null,
@@ -124,40 +112,17 @@ export const idlFactory = ({ IDL }) => {
     'is_following' : IDL.Bool,
     'principal' : IDL.Principal,
     'username' : IDL.Text,
+    'interests' : IDL.Vec(IDL.Text),
     'following_count' : IDL.Nat64,
     'is_followed_by_caller' : IDL.Bool,
     'handle' : IDL.Text,
     'followers_count' : IDL.Nat64,
     'avatar' : IDL.Text,
   });
-  const ArticleResponse = IDL.Record({
-    'id' : IDL.Text,
-    'status' : ContentStatus,
-    'updated_at' : IDL.Nat64,
-    'content' : IDL.Text,
-    'author_info' : UserSocialResponse,
-    'hashtags' : IDL.Vec(IDL.Text),
-    'shares_count' : IDL.Nat64,
-    'media_urls' : IDL.Vec(IDL.Text),
-    'news_reference' : IDL.Opt(NewsReferenceRequest),
-    'created_at' : IDL.Nat64,
-    'author' : IDL.Principal,
-    'token_mentions' : IDL.Vec(IDL.Text),
-    'comments_count' : IDL.Nat64,
-    'visibility' : ContentVisibility,
-    'likes_count' : IDL.Nat64,
-  });
-  const Result_3 = IDL.Variant({ 'Ok' : ArticleResponse, 'Err' : SquareError });
-  const ParentType = IDL.Variant({
-    'Article' : IDL.Null,
-    'Post' : IDL.Null,
-    'Comment' : IDL.Null,
-  });
-  const CreateCommentRequest = IDL.Record({
-    'id' : IDL.Opt(IDL.Text),
-    'content' : IDL.Text,
-    'parent_id' : IDL.Text,
-    'parent_type' : ParentType,
+  const ContentVisibility_1 = IDL.Variant({
+    'Private' : IDL.Null,
+    'FollowersOnly' : IDL.Null,
+    'Public' : IDL.Null,
   });
   CommentResponse.fill(
     IDL.Record({
@@ -167,18 +132,26 @@ export const idlFactory = ({ IDL }) => {
       'content' : IDL.Text,
       'child_comments' : IDL.Vec(CommentResponse),
       'author_info' : UserSocialResponse,
-      'shares_count' : IDL.Nat64,
       'created_at' : IDL.Nat64,
       'author' : IDL.Principal,
       'parent_id' : IDL.Text,
       'is_liked' : IDL.Bool,
       'comments_count' : IDL.Nat64,
-      'visibility' : ContentVisibility,
+      'visibility' : ContentVisibility_1,
       'likes_count' : IDL.Nat64,
       'parent_type' : ParentType,
     })
   );
-  const Result_4 = IDL.Variant({ 'Ok' : CommentResponse, 'Err' : SquareError });
+  const Result_3 = IDL.Variant({ 'Ok' : CommentResponse, 'Err' : SquareError });
+  const NewsReference = IDL.Record({
+    'metadata' : IDL.Vec(IDL.Tuple(IDL.Text, IDL.Text)),
+    'canister_id' : IDL.Principal,
+  });
+  const ContentVisibility = IDL.Variant({
+    'Private' : IDL.Null,
+    'FollowersOnly' : IDL.Null,
+    'Public' : IDL.Null,
+  });
   const CreatePostRequest = IDL.Record({
     'id' : IDL.Opt(IDL.Text),
     'is_nsfw' : IDL.Opt(IDL.Bool),
@@ -186,7 +159,7 @@ export const idlFactory = ({ IDL }) => {
     'hashtags' : IDL.Vec(IDL.Text),
     'media_urls' : IDL.Vec(IDL.Text),
     'tags' : IDL.Opt(IDL.Vec(IDL.Text)),
-    'news_reference' : IDL.Opt(NewsReferenceRequest),
+    'news_reference' : IDL.Opt(NewsReference),
     'token_mentions' : IDL.Opt(IDL.Vec(IDL.Text)),
     'mentions' : IDL.Opt(IDL.Vec(IDL.Text)),
     'visibility' : IDL.Opt(ContentVisibility),
@@ -198,15 +171,14 @@ export const idlFactory = ({ IDL }) => {
     'content' : IDL.Text,
     'author_info' : UserSocialResponse,
     'hashtags' : IDL.Vec(IDL.Text),
-    'shares_count' : IDL.Nat64,
     'media_urls' : IDL.Vec(IDL.Text),
     'tags' : IDL.Vec(IDL.Text),
-    'news_reference' : IDL.Opt(NewsReferenceRequest),
+    'news_reference' : IDL.Opt(NewsReference),
     'created_at' : IDL.Nat64,
     'author' : IDL.Principal,
     'token_mentions' : IDL.Vec(IDL.Text),
     'comments_count' : IDL.Nat64,
-    'visibility' : ContentVisibility,
+    'visibility' : ContentVisibility_1,
     'likes_count' : IDL.Nat64,
   });
   const ApiError = IDL.Record({
@@ -229,14 +201,12 @@ export const idlFactory = ({ IDL }) => {
     'Special' : IDL.Null,
   });
   const SocialInteractionRequirement = IDL.Record({
-    'share_count' : IDL.Opt(IDL.Nat64),
     'like_count' : IDL.Opt(IDL.Nat64),
     'follow_count' : IDL.Opt(IDL.Nat64),
   });
   const LoginStreakRequirement = IDL.Record({ 'days_required' : IDL.Nat64 });
   const ContentCreationRequirement = IDL.Record({
     'comment_count' : IDL.Opt(IDL.Nat64),
-    'article_count' : IDL.Opt(IDL.Nat64),
     'post_count' : IDL.Opt(IDL.Nat64),
     'required_hashtags' : IDL.Opt(IDL.Vec(IDL.Text)),
   });
@@ -260,17 +230,31 @@ export const idlFactory = ({ IDL }) => {
     'task_type' : TaskType,
     'requirements' : IDL.Opt(TaskRequirements),
   });
-  const Result_5 = IDL.Variant({ 'Ok' : IDL.Text, 'Err' : SquareError });
+  const Result_4 = IDL.Variant({ 'Ok' : IDL.Text, 'Err' : SquareError });
+  const ApiResponse_1 = IDL.Record({
+    'data' : IDL.Opt(IDL.Bool),
+    'error' : IDL.Opt(ApiError),
+    'success' : IDL.Bool,
+  });
+  const ApiResponse_2 = IDL.Record({
+    'data' : IDL.Opt(IDL.Text),
+    'error' : IDL.Opt(ApiError),
+    'success' : IDL.Bool,
+  });
+  const ApiResponse_3 = IDL.Record({
+    'data' : IDL.Opt(IDL.Vec(IDL.Tuple(IDL.Text, IDL.Text))),
+    'error' : IDL.Opt(ApiError),
+    'success' : IDL.Bool,
+  });
   const SortOption = IDL.Variant({
-    'MostShared' : IDL.Null,
     'MostCommented' : IDL.Null,
     'Trending' : IDL.Null,
     'MostLiked' : IDL.Null,
     'Latest' : IDL.Null,
   });
   const PaginationParams = IDL.Record({
-    'offset' : IDL.Nat64,
-    'limit' : IDL.Nat64,
+    'offset' : IDL.Opt(IDL.Nat64),
+    'limit' : IDL.Opt(IDL.Nat64),
   });
   const ContentFilter = IDL.Record({
     'hashtag' : IDL.Opt(IDL.Text),
@@ -287,14 +271,14 @@ export const idlFactory = ({ IDL }) => {
     'content_types' : IDL.Opt(IDL.Vec(ParentType)),
   });
   const FeedResponse = IDL.Record({
-    'articles' : IDL.Vec(ArticleResponse),
+    'total' : IDL.Nat64,
     'comments' : IDL.Vec(CommentResponse),
     'posts' : IDL.Vec(PostResponse),
     'next_offset' : IDL.Nat64,
     'has_more' : IDL.Bool,
   });
-  const Result_6 = IDL.Variant({ 'Ok' : FeedResponse, 'Err' : SquareError });
-  const ApiResponse_1 = IDL.Record({
+  const Result_5 = IDL.Variant({ 'Ok' : FeedResponse, 'Err' : SquareError });
+  const ApiResponse_4 = IDL.Record({
     'data' : IDL.Opt(IDL.Null),
     'error' : IDL.Opt(ApiError),
     'success' : IDL.Bool,
@@ -310,7 +294,7 @@ export const idlFactory = ({ IDL }) => {
     'expiration_time' : IDL.Opt(IDL.Nat64),
     'points' : IDL.Nat64,
   });
-  const Result_7 = IDL.Variant({
+  const Result_6 = IDL.Variant({
     'Ok' : IDL.Vec(TaskResponse),
     'Err' : SquareError,
   });
@@ -320,7 +304,7 @@ export const idlFactory = ({ IDL }) => {
     'next_offset' : IDL.Nat64,
     'has_more' : IDL.Bool,
   });
-  const Result_8 = IDL.Variant({
+  const Result_7 = IDL.Variant({
     'Ok' : CommentsResponse,
     'Err' : SquareError,
   });
@@ -330,7 +314,7 @@ export const idlFactory = ({ IDL }) => {
     'balance' : IDL.Nat64,
     'balance_in_trillion' : IDL.Float64,
   });
-  const Result_9 = IDL.Variant({
+  const Result_8 = IDL.Variant({
     'Ok' : CyclesBalanceResponse,
     'Err' : SquareError,
   });
@@ -344,7 +328,7 @@ export const idlFactory = ({ IDL }) => {
     'average_daily_consumption' : IDL.Nat64,
     'total_consumed_last_week' : IDL.Nat64,
   });
-  const Result_10 = IDL.Variant({
+  const Result_9 = IDL.Variant({
     'Ok' : CyclesConsumptionResponse,
     'Err' : SquareError,
   });
@@ -364,33 +348,43 @@ export const idlFactory = ({ IDL }) => {
     'notifications' : IDL.Vec(CyclesWarningNotification),
     'unacknowledged_count' : IDL.Nat64,
   });
-  const Result_11 = IDL.Variant({
-    'Ok' : CyclesNotificationsResponse,
-    'Err' : SquareError,
+  const ApiResponse_5 = IDL.Record({
+    'data' : IDL.Opt(CyclesNotificationsResponse),
+    'error' : IDL.Opt(ApiError),
+    'success' : IDL.Bool,
   });
   const CyclesThresholdConfig = IDL.Record({
     'critical_threshold' : IDL.Nat64,
     'warning_threshold' : IDL.Nat64,
     'notification_enabled' : IDL.Bool,
   });
-  const Result_12 = IDL.Variant({
-    'Ok' : CyclesThresholdConfig,
-    'Err' : SquareError,
+  const ApiResponse_6 = IDL.Record({
+    'data' : IDL.Opt(CyclesThresholdConfig),
+    'error' : IDL.Opt(ApiError),
+    'success' : IDL.Bool,
   });
-  const ApiResponse_2 = IDL.Record({
+  const ApiResponse_7 = IDL.Record({
     'data' : IDL.Opt(IDL.Vec(IDL.Text)),
     'error' : IDL.Opt(ApiError),
     'success' : IDL.Bool,
   });
-  const ApiResponse_3 = IDL.Record({
+  const ApiResponse_8 = IDL.Record({
     'data' : IDL.Opt(
       IDL.Vec(IDL.Tuple(ErrorCode, IDL.Nat64, IDL.Nat64, IDL.Nat64))
     ),
     'error' : IDL.Opt(ApiError),
     'success' : IDL.Bool,
   });
-  const ApiResponse_4 = IDL.Record({
+  const ApiResponse_9 = IDL.Record({
     'data' : IDL.Opt(IDL.Vec(UserSocialResponse)),
+    'error' : IDL.Opt(ApiError),
+    'success' : IDL.Bool,
+  });
+  const HeartbeatIntervalResponse = IDL.Record({
+    'interval_hours' : IDL.Nat64,
+  });
+  const ApiResponse_10 = IDL.Record({
+    'data' : IDL.Opt(HeartbeatIntervalResponse),
     'error' : IDL.Opt(ApiError),
     'success' : IDL.Bool,
   });
@@ -413,7 +407,7 @@ export const idlFactory = ({ IDL }) => {
     'updated_at' : IDL.Nat64,
     'tags' : IDL.Vec(HotTagInfo),
   });
-  const Result_13 = IDL.Variant({
+  const Result_10 = IDL.Variant({
     'Ok' : HotTagsResponse,
     'Err' : SquareError,
   });
@@ -428,21 +422,17 @@ export const idlFactory = ({ IDL }) => {
     'content_type' : ParentType,
     'likes' : IDL.Vec(UserLikeInfo),
   });
-  const Result_14 = IDL.Variant({ 'Ok' : LikesResponse, 'Err' : SquareError });
-  const ApiResponse_5 = IDL.Record({
+  const Result_11 = IDL.Variant({ 'Ok' : LikesResponse, 'Err' : SquareError });
+  const LogEntry = IDL.Record({
+    'message' : IDL.Text,
+    'timestamp' : IDL.Nat64,
+  });
+  const ApiResponse_11 = IDL.Record({
     'data' : IDL.Opt(IDL.Vec(IDL.Tuple(ErrorCode, IDL.Nat64))),
     'error' : IDL.Opt(ApiError),
     'success' : IDL.Bool,
   });
-  const NotificationSettings = IDL.Record({
-    'email_address' : IDL.Opt(IDL.Text),
-    'notification_frequency_hours' : IDL.Nat64,
-    'email_enabled' : IDL.Bool,
-  });
-  const Result_15 = IDL.Variant({
-    'Ok' : NotificationSettings,
-    'Err' : SquareError,
-  });
+  const Result_12 = IDL.Variant({ 'Ok' : IDL.Bool, 'Err' : SquareError });
   const PersonalizedRecommendationsRequest = IDL.Record({
     'diversity_factor' : IDL.Opt(IDL.Float64),
     'recency_weight' : IDL.Opt(IDL.Float64),
@@ -453,19 +443,13 @@ export const idlFactory = ({ IDL }) => {
     'include_similar_to_liked' : IDL.Opt(IDL.Bool),
     'content_types' : IDL.Opt(IDL.Vec(ParentType)),
   });
-  const Result_16 = IDL.Variant({ 'Ok' : PostResponse, 'Err' : SquareError });
+  const Result_13 = IDL.Variant({ 'Ok' : PostResponse, 'Err' : SquareError });
   const PostsResponse = IDL.Record({
     'total' : IDL.Nat64,
     'posts' : IDL.Vec(PostResponse),
     'next_offset' : IDL.Nat64,
   });
-  const Result_17 = IDL.Variant({ 'Ok' : PostsResponse, 'Err' : SquareError });
-  const SharesResponse = IDL.Record({
-    'content_id' : IDL.Text,
-    'count' : IDL.Nat64,
-    'content_type' : ParentType,
-  });
-  const Result_18 = IDL.Variant({ 'Ok' : SharesResponse, 'Err' : SquareError });
+  const Result_14 = IDL.Variant({ 'Ok' : PostsResponse, 'Err' : SquareError });
   const GetTrendingTopicsRequest = IDL.Record({
     'limit' : IDL.Opt(IDL.Nat32),
     'time_range_hours' : IDL.Opt(IDL.Nat32),
@@ -481,21 +465,22 @@ export const idlFactory = ({ IDL }) => {
     'count' : IDL.Nat64,
     'trend_direction' : TrendDirection,
   });
-  const Result_19 = IDL.Variant({
+  const Result_15 = IDL.Variant({
     'Ok' : IDL.Vec(TrendingTopicResponse),
     'Err' : SquareError,
   });
   const UserLeaderboardItem = IDL.Record({
     'principal' : IDL.Principal,
     'username' : IDL.Text,
-    'last_claim_date' : IDL.Opt(IDL.Nat64),
+    'comment_count' : IDL.Nat64,
+    'last_claim_date' : IDL.Nat64,
     'consecutive_daily_logins' : IDL.Nat64,
+    'like_count' : IDL.Nat64,
     'rank' : IDL.Nat64,
-    'article_count' : IDL.Nat64,
     'post_count' : IDL.Nat64,
+    'reputation' : IDL.Nat64,
     'handle' : IDL.Text,
     'followers_count' : IDL.Nat64,
-    'points' : IDL.Nat64,
     'avatar' : IDL.Text,
   });
   const UserLeaderboardResponse = IDL.Record({
@@ -504,7 +489,7 @@ export const idlFactory = ({ IDL }) => {
     'next_offset' : IDL.Nat64,
     'has_more' : IDL.Bool,
   });
-  const ApiResponse_6 = IDL.Record({
+  const ApiResponse_12 = IDL.Record({
     'data' : IDL.Opt(UserLeaderboardResponse),
     'error' : IDL.Opt(ApiError),
     'success' : IDL.Bool,
@@ -521,22 +506,45 @@ export const idlFactory = ({ IDL }) => {
     'Moderator' : IDL.Null,
     'Creator' : IDL.Null,
   });
+  const NotificationPreferences = IDL.Record({
+    'follows' : IDL.Bool,
+    'likes' : IDL.Bool,
+    'comments' : IDL.Bool,
+    'mentions' : IDL.Bool,
+    'system' : IDL.Bool,
+  });
+  const InteractionPreferences = IDL.Record({
+    'allow_comments' : IDL.Bool,
+    'allow_mentions' : IDL.Bool,
+    'allow_follows' : IDL.Bool,
+    'show_likes' : IDL.Bool,
+  });
+  const UserPrivacySettings = IDL.Record({
+    'notification_preferences' : NotificationPreferences,
+    'content_visibility' : ContentVisibility_1,
+    'interaction_preferences' : InteractionPreferences,
+    'profile_visibility' : ContentVisibility_1,
+  });
   const UserProfileResponse = IDL.Record({
     'bio' : IDL.Text,
     'is_following' : IDL.Bool,
     'status' : UserStatus,
     'last_login' : IDL.Nat64,
+    'updated_at' : IDL.Nat64,
     'principal' : IDL.Principal,
     'username' : IDL.Text,
+    'interests' : IDL.Vec(IDL.Text),
     'role' : UserRole,
     'following_count' : IDL.Nat64,
+    'created_at' : IDL.Nat64,
     'handle' : IDL.Text,
     'registered_at' : IDL.Nat64,
     'followers_count' : IDL.Nat64,
+    'privacy_settings' : IDL.Opt(UserPrivacySettings),
     'social_links' : IDL.Vec(IDL.Tuple(IDL.Text, IDL.Text)),
     'avatar' : IDL.Text,
   });
-  const ApiResponse_7 = IDL.Record({
+  const ApiResponse_13 = IDL.Record({
     'data' : IDL.Opt(UserProfileResponse),
     'error' : IDL.Opt(ApiError),
     'success' : IDL.Bool,
@@ -555,7 +563,7 @@ export const idlFactory = ({ IDL }) => {
       'Array' : IDL.Vec(Value),
     })
   );
-  const Result_20 = IDL.Variant({
+  const Result_16 = IDL.Variant({
     'Ok' : IDL.Vec(IDL.Tuple(IDL.Text, Value)),
     'Err' : SquareError,
   });
@@ -563,7 +571,7 @@ export const idlFactory = ({ IDL }) => {
     'content_id' : IDL.Text,
     'content_type' : ParentType,
   });
-  const Result_21 = IDL.Variant({
+  const Result_17 = IDL.Variant({
     'Ok' : IDL.Vec(IDL.Principal),
     'Err' : IDL.Text,
   });
@@ -610,18 +618,9 @@ export const idlFactory = ({ IDL }) => {
     'created_at' : IDL.Nat64,
     'author' : UserSocialResponse,
   });
-  const Result_22 = IDL.Variant({
+  const Result_18 = IDL.Variant({
     'Ok' : IDL.Vec(SearchResultResponse),
     'Err' : SquareError,
-  });
-  const UpdateArticleRequest = IDL.Record({
-    'id' : IDL.Text,
-    'content' : IDL.Text,
-    'hashtags' : IDL.Opt(IDL.Vec(IDL.Text)),
-    'media_urls' : IDL.Opt(IDL.Vec(IDL.Text)),
-    'news_reference' : IDL.Opt(NewsReferenceRequest),
-    'token_mentions' : IDL.Opt(IDL.Vec(IDL.Text)),
-    'visibility' : IDL.Opt(ContentVisibility),
   });
   const UpdateCommentRequest = IDL.Record({
     'id' : IDL.Text,
@@ -638,29 +637,9 @@ export const idlFactory = ({ IDL }) => {
     'hashtags' : IDL.Opt(IDL.Vec(IDL.Text)),
     'media_urls' : IDL.Opt(IDL.Vec(IDL.Text)),
     'tags' : IDL.Opt(IDL.Vec(IDL.Text)),
-    'news_reference' : IDL.Opt(NewsReferenceRequest),
+    'news_reference' : IDL.Opt(NewsReference),
     'token_mentions' : IDL.Opt(IDL.Vec(IDL.Text)),
-    'visibility' : IDL.Opt(ContentVisibility),
-  });
-  const NotificationPreferences = IDL.Record({
-    'shares' : IDL.Bool,
-    'follows' : IDL.Bool,
-    'likes' : IDL.Bool,
-    'comments' : IDL.Bool,
-    'mentions' : IDL.Bool,
-    'system' : IDL.Bool,
-  });
-  const InteractionPreferences = IDL.Record({
-    'allow_comments' : IDL.Bool,
-    'allow_mentions' : IDL.Bool,
-    'allow_follows' : IDL.Bool,
-    'show_likes' : IDL.Bool,
-  });
-  const UserPrivacySettings = IDL.Record({
-    'notification_preferences' : NotificationPreferences,
-    'content_visibility' : ContentVisibility,
-    'interaction_preferences' : InteractionPreferences,
-    'profile_visibility' : ContentVisibility,
+    'visibility' : IDL.Opt(ContentVisibility_1),
   });
   const UpdateProfileRequest = IDL.Record({
     'bio' : IDL.Opt(IDL.Text),
@@ -675,102 +654,100 @@ export const idlFactory = ({ IDL }) => {
     'acknowledge_notification' : IDL.Func([IDL.Nat64], [Result], []),
     'add_manager' : IDL.Func([IDL.Principal], [Result_1], []),
     'award_points' : IDL.Func([AwardPointsRequest], [Result], []),
+    'clear_logs' : IDL.Func([], [IDL.Bool], []),
     'complete_task' : IDL.Func([CompleteTaskRequest], [Result_2], []),
-    'create_article' : IDL.Func([CreateArticleRequest], [Result_3], []),
-    'create_comment' : IDL.Func([CreateCommentRequest], [Result_4], []),
+    'create_comment' : IDL.Func([CreateCommentRequest], [Result_3], []),
     'create_post' : IDL.Func([CreatePostRequest], [ApiResponse], []),
-    'create_task' : IDL.Func([CreateTaskRequest], [Result_5], []),
-    'delete_article' : IDL.Func([IDL.Text], [Result], []),
+    'create_task' : IDL.Func([CreateTaskRequest], [Result_4], []),
+    'debug_fix_user_data' : IDL.Func([IDL.Text], [ApiResponse_1], []),
+    'debug_fix_user_profile' : IDL.Func([IDL.Text], [ApiResponse_2], []),
+    'debug_list_all_users' : IDL.Func([], [ApiResponse_3], ['query']),
     'delete_comment' : IDL.Func([IDL.Text], [Result], []),
     'delete_post' : IDL.Func([IDL.Text], [Result], []),
     'delete_task' : IDL.Func([IDL.Text], [Result], []),
     'discover_content' : IDL.Func(
         [DiscoverContentRequest],
-        [Result_6],
+        [Result_5],
         ['query'],
       ),
-    'follow_user' : IDL.Func([IDL.Principal], [ApiResponse_1], []),
-    'get_article' : IDL.Func([IDL.Text], [Result_3], ['query']),
-    'get_available_tasks' : IDL.Func([], [Result_7], ['query']),
-    'get_comment' : IDL.Func([IDL.Text], [Result_4], ['query']),
+    'follow_user' : IDL.Func([IDL.Principal], [ApiResponse_4], []),
+    'get_available_tasks' : IDL.Func([], [Result_6], ['query']),
+    'get_comment' : IDL.Func([IDL.Text], [Result_3], ['query']),
     'get_comments' : IDL.Func(
         [IDL.Text, IDL.Text, PaginationParams],
-        [Result_8],
+        [Result_7],
         ['query'],
       ),
-    'get_cycles_balance' : IDL.Func([], [Result_9], ['query']),
-    'get_cycles_consumption_history' : IDL.Func([], [Result_10], ['query']),
-    'get_cycles_notifications' : IDL.Func([], [Result_11], ['query']),
-    'get_cycles_threshold' : IDL.Func([], [Result_12], ['query']),
-    'get_error_history' : IDL.Func([], [ApiResponse_2], ['query']),
-    'get_error_stats' : IDL.Func([], [ApiResponse_3], ['query']),
-    'get_followers' : IDL.Func(
-        [IDL.Opt(IDL.Principal)],
-        [ApiResponse_4],
-        ['query'],
-      ),
-    'get_following' : IDL.Func(
-        [IDL.Opt(IDL.Principal)],
-        [ApiResponse_4],
-        ['query'],
-      ),
-    'get_hot_tags' : IDL.Func([GetHotTagsRequest], [Result_13], ['query']),
-    'get_likes' : IDL.Func([IDL.Text, ParentType], [Result_14], ['query']),
+    'get_cycles_balance' : IDL.Func([], [Result_8], ['query']),
+    'get_cycles_consumption_history' : IDL.Func([], [Result_9], ['query']),
+    'get_cycles_notifications' : IDL.Func([], [ApiResponse_5], ['query']),
+    'get_cycles_threshold' : IDL.Func([], [ApiResponse_6], ['query']),
+    'get_error_history' : IDL.Func([], [ApiResponse_7], ['query']),
+    'get_error_stats' : IDL.Func([], [ApiResponse_8], ['query']),
+    'get_followers' : IDL.Func([IDL.Opt(IDL.Text)], [ApiResponse_9], ['query']),
+    'get_following' : IDL.Func([IDL.Opt(IDL.Text)], [ApiResponse_9], ['query']),
+    'get_heartbeat_interval' : IDL.Func([], [ApiResponse_10], ['query']),
+    'get_hot_tags' : IDL.Func([GetHotTagsRequest], [Result_10], ['query']),
+    'get_likes' : IDL.Func([IDL.Text, ParentType], [Result_11], ['query']),
+    'get_logs' : IDL.Func([], [IDL.Vec(LogEntry)], ['query']),
     'get_most_common_errors' : IDL.Func(
         [IDL.Nat64],
-        [ApiResponse_5],
+        [ApiResponse_11],
         ['query'],
       ),
-    'get_notification_settings' : IDL.Func([], [Result_15], ['query']),
+    'get_notification_settings' : IDL.Func([], [Result_12], ['query']),
     'get_personalized_recommendations' : IDL.Func(
         [PersonalizedRecommendationsRequest],
-        [Result_6],
+        [Result_5],
         ['query'],
       ),
-    'get_post' : IDL.Func([IDL.Text], [Result_16], ['query']),
-    'get_posts' : IDL.Func([PaginationParams], [Result_17], ['query']),
-    'get_shares' : IDL.Func([IDL.Text, ParentType], [Result_18], ['query']),
+    'get_post' : IDL.Func([IDL.Text], [Result_13], ['query']),
+    'get_posts' : IDL.Func([PaginationParams], [Result_14], ['query']),
+    'get_recent_logs' : IDL.Func([IDL.Nat64], [IDL.Vec(LogEntry)], ['query']),
     'get_trending_topics' : IDL.Func(
         [GetTrendingTopicsRequest],
-        [Result_19],
+        [Result_15],
         ['query'],
       ),
     'get_user_content' : IDL.Func(
-        [IDL.Opt(IDL.Principal), IDL.Opt(ParentType), PaginationParams],
-        [Result_6],
+        [IDL.Opt(IDL.Text), IDL.Opt(ParentType), PaginationParams],
+        [Result_5],
         ['query'],
       ),
     'get_user_leaderboard' : IDL.Func(
         [PaginationParams],
-        [ApiResponse_6],
+        [ApiResponse_12],
         ['query'],
       ),
     'get_user_profile' : IDL.Func(
-        [IDL.Opt(IDL.Principal)],
-        [ApiResponse_7],
+        [IDL.Opt(IDL.Text)],
+        [ApiResponse_13],
         ['query'],
       ),
-    'get_user_rewards' : IDL.Func([], [Result_20], ['query']),
+    'get_user_rewards' : IDL.Func([], [Result_16], ['query']),
     'like_content' : IDL.Func([LikeContentRequest], [Result], []),
-    'list_managers' : IDL.Func([], [Result_21], ['query']),
-    'migrate_to_sharded_storage' : IDL.Func([], [Result_5], []),
+    'list_managers' : IDL.Func([], [Result_17], ['query']),
+    'migrate_storage' : IDL.Func([], [ApiResponse_2], []),
     'moderate_content' : IDL.Func([ContentModerationRequest], [Result], []),
-    'register_user' : IDL.Func([RegisterUserRequest], [ApiResponse_1], []),
+    'register_user' : IDL.Func([RegisterUserRequest], [ApiResponse_4], []),
     'remove_manager' : IDL.Func([IDL.Principal], [Result_1], []),
     'report_content' : IDL.Func([ReportContentRequest], [Result], []),
-    'search_content' : IDL.Func([SearchRequest], [Result_22], ['query']),
-    'share_content' : IDL.Func([IDL.Text, ParentType], [Result], []),
-    'unfollow_user' : IDL.Func([IDL.Principal], [ApiResponse_1], []),
+    'search_content' : IDL.Func([SearchRequest], [Result_18], ['query']),
+    'unfollow_user' : IDL.Func([IDL.Principal], [ApiResponse_4], []),
     'unlike_content' : IDL.Func([LikeContentRequest], [Result], []),
-    'update_article' : IDL.Func([UpdateArticleRequest], [Result_3], []),
-    'update_comment' : IDL.Func([UpdateCommentRequest], [Result_4], []),
+    'update_comment' : IDL.Func([UpdateCommentRequest], [Result_3], []),
     'update_cycles_threshold' : IDL.Func(
         [UpdateCyclesThresholdRequest],
-        [Result],
+        [ApiResponse_6],
+        [],
+      ),
+    'update_heartbeat_interval' : IDL.Func(
+        [HeartbeatIntervalResponse],
+        [ApiResponse_10],
         [],
       ),
     'update_notification_settings' : IDL.Func(
-        [IDL.Opt(IDL.Bool), IDL.Opt(IDL.Text), IDL.Opt(IDL.Nat64)],
+        [IDL.Opt(IDL.Bool)],
         [Result],
         [],
       ),
@@ -778,7 +755,7 @@ export const idlFactory = ({ IDL }) => {
     'update_task' : IDL.Func([CreateTaskRequest], [Result], []),
     'update_user_profile' : IDL.Func(
         [UpdateProfileRequest],
-        [ApiResponse_1],
+        [ApiResponse_2],
         [],
       ),
   });

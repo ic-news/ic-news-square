@@ -130,7 +130,7 @@ impl SquareError {
             code,
             message: message.into(),
             context: ErrorContext {
-                timestamp: time(),
+                timestamp: time() / 1_000_000,
                 module: module.into(),
                 function: function.into(),
                 details: None,

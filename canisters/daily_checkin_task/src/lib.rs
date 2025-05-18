@@ -3,7 +3,8 @@ use ic_cdk::api::{time, caller};
 use ic_cdk_macros::*;
 
 use std::cell::RefCell;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet, BTreeMap};
+// PointsTransaction is defined locally
 
 // Import Value enum for flexible data representation
 #[derive(CandidType, Deserialize, Clone, Debug)]
@@ -20,13 +21,24 @@ pub enum Value {
     Null,
 }
 
-// Storage for the daily check-in task
+// Storage structure for the canister
 thread_local! {
-    static STORAGE: RefCell<DailyCheckInStorage> = RefCell::new(DailyCheckInStorage::default());
+    static STORAGE: RefCell<Storage> = RefCell::new(Storage {
+        user_checkins: HashMap::new(),
+        consecutive_days: HashMap::new(),
+        user_points: HashMap::new(),
+        points_history: HashMap::new(),
+        admins: HashSet::new(),
+        task_config: TaskConfig::default(),
+        // Indexed collections for efficient querying
+        checkin_time_index: BTreeMap::new(),
+        consecutive_days_index: BTreeMap::new(),
+        total_points_index: BTreeMap::new(),
+    });
 }
 
 #[derive(Default, Clone, CandidType, Deserialize)]
-struct DailyCheckInStorage {
+struct Storage {
     // Map of user principal to their last check-in timestamp
     user_checkins: HashMap<Principal, u64>,
     // Map of user principal to their consecutive check-in days
@@ -38,7 +50,14 @@ struct DailyCheckInStorage {
     // Task configuration
     task_config: TaskConfig,
     // Admin principals
-    admins: Vec<Principal>,
+    admins: HashSet<Principal>,
+    // Indexed collections for efficient querying
+    // BTreeMap for last check-in time (key: timestamp, value: list of users)
+    checkin_time_index: BTreeMap<u64, Vec<Principal>>,
+    // BTreeMap for consecutive days (key: consecutive days, value: list of users)
+    consecutive_days_index: BTreeMap<u64, Vec<Principal>>,
+    // BTreeMap for total points (key: points, value: list of users)
+    total_points_index: BTreeMap<u64, Vec<Principal>>,
 }
 
 // Points transaction record
@@ -47,7 +66,8 @@ struct PointsTransaction {
     pub amount: i64,
     pub reason: String,
     pub timestamp: u64,
-    pub reference_id: Option<String>,
+    pub reference_id: Option<String>, // Content ID or task ID
+    pub points: u64,
 }
 
 // Task configuration
@@ -98,6 +118,25 @@ struct DailyCheckInResponse {
     pub next_claim_available_at: u64,
 }
 
+// User check-in detail record
+#[derive(CandidType, Deserialize, Clone)]
+struct CheckInDetail {
+    pub user: Principal,
+    pub last_checkin_time: u64,
+    pub consecutive_days: u64,
+    pub total_points: u64,
+}
+
+// Paginated response for user check-in details
+#[derive(CandidType, Deserialize, Clone)]
+struct PaginatedCheckInDetails {
+    pub details: Vec<CheckInDetail>,
+    pub total_count: u64,
+    pub page: u64,
+    pub page_size: u64,
+    pub total_pages: u64,
+}
+
 // Constants
 const SECONDS_IN_DAY: u64 = 86400000;
 const DAILY_CHECK_IN_POINTS: u64 = 10;
@@ -106,12 +145,11 @@ const CONSECUTIVE_DAYS_BONUS_MULTIPLIER: u64 = 2;
 
 // Direct daily check-in API for users
 #[update]
-fn claim_daily_check_in() -> DailyCheckInResponse {
+fn claim_daily_check_in() -> Result<DailyCheckInResponse, String> {
     let caller = caller();
     let now = time() / 1_000_000;
     
     // Calculate the start of the current day in UTC time
-    // Note: IC timestamp is in nanoseconds, convert to seconds for calculation
     let today_start = (now / SECONDS_IN_DAY) * SECONDS_IN_DAY;
     
     // Check if already claimed today
@@ -120,7 +158,6 @@ fn claim_daily_check_in() -> DailyCheckInResponse {
         
         if let Some(last_checkin) = storage.user_checkins.get(&caller) {
             // Check if last check-in time is within today's range
-            // Calculate the start of the last check-in day
             let last_checkin_day_start = *last_checkin - (*last_checkin % SECONDS_IN_DAY);
             let checked_in_today = last_checkin_day_start == today_start;
             
@@ -129,35 +166,28 @@ fn claim_daily_check_in() -> DailyCheckInResponse {
             false
         }
     });
-    
+
     if already_checked_in {
-        return DailyCheckInResponse {
-            success: false,
-            points_earned: 0,
-            consecutive_days: 0,
-            bonus_points: 0,
-            total_points: 0,
-            next_claim_available_at: today_start + SECONDS_IN_DAY,
-        };
+        return Err("Already claimed daily check-in today".to_string());
     }
     
     // Process the check-in
     let result = process_daily_checkin(caller, now, today_start);
     
     // Return the response
-    DailyCheckInResponse {
+    Ok(DailyCheckInResponse {
         success: true,
         points_earned: DAILY_CHECK_IN_POINTS,
         consecutive_days: result.0,
         bonus_points: result.1,
         total_points: DAILY_CHECK_IN_POINTS + result.1,
         next_claim_available_at: today_start + SECONDS_IN_DAY,
-    }
+    })
 }
 
 // Verify the daily check-in task (called by the main system)
 #[update]
-fn verify_task(request: TaskVerificationRequest) -> TaskVerificationResponse {
+fn verify_task(request: TaskVerificationRequest) -> Result<TaskVerificationResponse, String> {
     let user = request.user;
     let now = time() / 1_000_000;
     
@@ -181,11 +211,7 @@ fn verify_task(request: TaskVerificationRequest) -> TaskVerificationResponse {
     });
     
     if already_checked_in {
-        return TaskVerificationResponse {
-            success: false,
-            message: "Already claimed daily check-in today".to_string(),
-            verification_data: None,
-        };
+        return Err("Already claimed daily check-in today".to_string());
     }
     
     // Process the check-in
@@ -209,11 +235,11 @@ fn verify_task(request: TaskVerificationRequest) -> TaskVerificationResponse {
     };
     
     // Return successful response
-    TaskVerificationResponse {
+    Ok(TaskVerificationResponse {
         success: true,
         message: format!("Daily check-in successful (Day {})", consecutive_days),
         verification_data: Some(verification_data),
-    }
+    })
 }
 
 // Common function to process a daily check-in
@@ -265,15 +291,70 @@ fn process_daily_checkin(user: Principal, now: u64, today_start: u64) -> (u64, u
             }
         }
         
-        // Update storage - store today's start time instead of current time
-        // This ensures consistent check-in status verification
+        // Get old values before updating
+        let old_checkin_time = storage.user_checkins.get(&user).cloned();
+        let old_consecutive_days = storage.consecutive_days.get(&user).cloned();
+        let old_points = storage.user_points.get(&user).cloned();
+        
+        // Remove user from old indices first
+        if let Some(time) = old_checkin_time {
+            // Remove from checkin time index
+            if let Some(users) = storage.checkin_time_index.get_mut(&time) {
+                users.retain(|p| p != &user);
+                // Remove empty entries
+                if users.is_empty() {
+                    storage.checkin_time_index.remove(&time);
+                }
+            }
+        }
+        
+        if let Some(days) = old_consecutive_days {
+            // Remove from consecutive days index
+            if let Some(users) = storage.consecutive_days_index.get_mut(&days) {
+                users.retain(|p| p != &user);
+                // Remove empty entries
+                if users.is_empty() {
+                    storage.consecutive_days_index.remove(&days);
+                }
+            }
+        }
+        
+        if let Some(points) = old_points {
+            // Remove from total points index
+            if let Some(users) = storage.total_points_index.get_mut(&points) {
+                users.retain(|p| p != &user);
+                // Remove empty entries
+                if users.is_empty() {
+                    storage.total_points_index.remove(&points);
+                }
+            }
+        }
+        
+        // Update primary maps
         storage.user_checkins.insert(user, today_start);
         storage.consecutive_days.insert(user, new_consecutive_days);
         
         // Update points (for direct API calls)
         let total_points = DAILY_CHECK_IN_POINTS + bonus_points;
         let current_points = *storage.user_points.get(&user).unwrap_or(&0);
-        storage.user_points.insert(user, current_points + total_points);
+        let new_total_points = current_points + total_points;
+        storage.user_points.insert(user, new_total_points);
+        
+        // Update indices with new values
+        // Update checkin time index
+        storage.checkin_time_index.entry(today_start)
+            .or_insert_with(Vec::new)
+            .push(user);
+            
+        // Update consecutive days index
+        storage.consecutive_days_index.entry(new_consecutive_days)
+            .or_insert_with(Vec::new)
+            .push(user);
+            
+        // Update total points index
+        storage.total_points_index.entry(new_total_points)
+            .or_insert_with(Vec::new)
+            .push(user);
         
         // Add points transaction
         let transaction = PointsTransaction {
@@ -281,6 +362,7 @@ fn process_daily_checkin(user: Principal, now: u64, today_start: u64) -> (u64, u
             reason: format!("Daily check-in (Day {})", new_consecutive_days),
             timestamp: now,
             reference_id: Some("daily_checkin".to_string()),
+            points: total_points,
         };
         
         let user_history = storage.points_history.entry(user).or_insert_with(Vec::new);
@@ -424,10 +506,10 @@ fn get_user_rewards(user: Principal) -> HashMap<String, Value> {
 #[update]
 fn reset_user_streak(user: Principal) {
     // Verify caller is an admin
-    let caller_principal = caller();
+    // Get the caller principal for initialization
     let is_admin = STORAGE.with(|storage| {
         let storage = storage.borrow();
-        storage.admins.contains(&caller_principal)
+        storage.admins.contains(&caller())
     });
     
     if !is_admin {
@@ -443,10 +525,10 @@ fn reset_user_streak(user: Principal) {
 #[update]
 fn award_points(user: Principal, points: u64, reason: String) {
     // Verify caller is an admin
-    let caller_principal = caller();
+    // Get the caller principal for initialization
     let is_admin = STORAGE.with(|storage| {
         let storage = storage.borrow();
-        storage.admins.contains(&caller_principal)
+        storage.admins.contains(&caller())
     });
     
     if !is_admin {
@@ -465,6 +547,7 @@ fn award_points(user: Principal, points: u64, reason: String) {
             reason,
             timestamp: time() / 1_000_000,
             reference_id: None,
+            points,
         };
         
         let user_history = storage.points_history.entry(user).or_insert_with(Vec::new);
@@ -475,23 +558,50 @@ fn award_points(user: Principal, points: u64, reason: String) {
 // Initialize the canister with default settings
 #[init]
 fn init() {
-    let caller_principal = caller();
-    
     STORAGE.with(|storage| {
         let mut storage = storage.borrow_mut();
+        storage.admins.insert(caller());
         
-        // Add the deployer as an admin
-        storage.admins.push(caller_principal);
-        
-        // Set default task configuration
+        // Set default task config
         storage.task_config = TaskConfig {
-            title: "Daily Check-in".to_string(),
-            description: "Check in daily to earn points and build a streak".to_string(),
             base_points: DAILY_CHECK_IN_POINTS,
             max_consecutive_bonus_days: MAX_CONSECUTIVE_BONUS_DAYS,
             consecutive_days_bonus_multiplier: CONSECUTIVE_DAYS_BONUS_MULTIPLIER,
-            enabled: true,
+            ..Default::default()
         };
+        
+        // Initialize indices from existing data (if any)
+        // This is important for canister upgrades
+        // Clone the data to avoid borrowing conflicts
+        let user_checkins_clone: Vec<(Principal, u64)> = storage.user_checkins.iter()
+            .map(|(user, time)| (*user, *time))
+            .collect();
+            
+        for (user, checkin_time) in user_checkins_clone {
+            storage.checkin_time_index.entry(checkin_time)
+                .or_insert_with(Vec::new)
+                .push(user);
+        }
+        
+        let consecutive_days_clone: Vec<(Principal, u64)> = storage.consecutive_days.iter()
+            .map(|(user, days)| (*user, *days))
+            .collect();
+            
+        for (user, days) in consecutive_days_clone {
+            storage.consecutive_days_index.entry(days)
+                .or_insert_with(Vec::new)
+                .push(user);
+        }
+        
+        let user_points_clone: Vec<(Principal, u64)> = storage.user_points.iter()
+            .map(|(user, points)| (*user, *points))
+            .collect();
+            
+        for (user, points) in user_points_clone {
+            storage.total_points_index.entry(points)
+                .or_insert_with(Vec::new)
+                .push(user);
+        }
     });
 }
 
@@ -499,10 +609,10 @@ fn init() {
 #[update]
 fn update_task_config(config: TaskConfig) {
     // Verify caller is an admin
-    let caller_principal = caller();
+    // Get the caller principal for initialization
     let is_admin = STORAGE.with(|storage| {
         let storage = storage.borrow();
-        storage.admins.contains(&caller_principal)
+        storage.admins.contains(&caller())
     });
     
     if !is_admin {
@@ -528,10 +638,10 @@ fn get_task_config() -> TaskConfig {
 #[update]
 fn add_admin(principal: Principal) {
     // Verify caller is an admin
-    let caller_principal = caller();
+    // Get the caller principal for initialization
     let is_admin = STORAGE.with(|storage| {
         let storage = storage.borrow();
-        storage.admins.contains(&caller_principal)
+        storage.admins.contains(&caller())
     });
     
     if !is_admin {
@@ -541,7 +651,7 @@ fn add_admin(principal: Principal) {
     STORAGE.with(|storage| {
         let mut storage = storage.borrow_mut();
         if !storage.admins.contains(&principal) {
-            storage.admins.push(principal);
+            storage.admins.insert(principal);
         }
     });
 }
@@ -550,10 +660,10 @@ fn add_admin(principal: Principal) {
 #[update]
 fn remove_admin(principal: Principal) {
     // Verify caller is an admin
-    let caller_principal = caller();
+    // Get the caller principal for initialization
     let is_admin = STORAGE.with(|storage| {
         let storage = storage.borrow();
-        storage.admins.contains(&caller_principal)
+        storage.admins.contains(&caller())
     });
     
     if !is_admin {
@@ -571,7 +681,235 @@ fn remove_admin(principal: Principal) {
 fn get_admins() -> Vec<Principal> {
     STORAGE.with(|storage| {
         let storage = storage.borrow();
-        storage.admins.clone()
+        storage.admins.iter().cloned().collect()
+    })
+}
+
+// Get all users' check-in details with pagination
+#[query]
+fn get_all_checkin_details(page: u64, page_size: u64, sort_by: Option<String>, sort_order: Option<String>) -> Result<PaginatedCheckInDetails, String> {
+    let caller = caller();
+    
+    // Check if caller is admin
+    let is_admin = STORAGE.with(|storage| {
+        let storage = storage.borrow();
+        storage.admins.contains(&caller)
+    });
+    
+    if !is_admin {
+        return Err("Unauthorized: Only admins can access all check-in details".to_string());
+    }
+    
+    // Validate pagination parameters
+    if page == 0 {
+        return Err("Page number must be at least 1".to_string());
+    }
+    
+    if page_size == 0 || page_size > 100 {
+        return Err("Page size must be between 1 and 100".to_string());
+    }
+    
+    // Get sort parameters with defaults
+    let sort_by = sort_by.unwrap_or_else(|| "last_checkin_time".to_string());
+    let sort_order = sort_order.unwrap_or_else(|| "desc".to_string());
+    
+    // Validate sort parameters
+    if !vec!["last_checkin_time", "consecutive_days", "total_points"].contains(&sort_by.as_str()) {
+        return Err("Invalid sort_by parameter. Must be one of: last_checkin_time, consecutive_days, total_points".to_string());
+    }
+    
+    if !vec!["asc", "desc"].contains(&sort_order.as_str()) {
+        return Err("Invalid sort_order parameter. Must be one of: asc, desc".to_string());
+    }
+    
+    STORAGE.with(|storage| {
+        let storage = storage.borrow();
+        
+        // Get total count of users with check-ins
+        let total_count = storage.user_checkins.len() as u64;
+        let total_pages = (total_count + page_size - 1) / page_size; // Ceiling division
+        
+        // Adjust page if it exceeds total pages
+        let effective_page = if page > total_pages && total_pages > 0 {
+            total_pages
+        } else {
+            page
+        };
+        
+        // Calculate pagination limits
+        let start_idx = ((effective_page - 1) * page_size) as usize;
+        let limit = page_size as usize;
+        
+        // Use the appropriate index based on sort field and order
+        let mut page_details = Vec::with_capacity(limit);
+        
+        match sort_by.as_str() {
+            "last_checkin_time" => {
+                // Use the checkin_time_index for efficient retrieval
+                let mut sorted_users = Vec::new();
+                
+                if sort_order == "asc" {
+                    // Ascending order - iterate from oldest to newest
+                    for (timestamp, users) in &storage.checkin_time_index {
+                        for user in users {
+                            sorted_users.push((*timestamp, *user));
+                        }
+                    }
+                    sorted_users.sort_by(|a, b| a.0.cmp(&b.0)); // Sort by timestamp ascending
+                } else {
+                    // Descending order - iterate from newest to oldest
+                    for (timestamp, users) in storage.checkin_time_index.iter().rev() {
+                        for user in users {
+                            sorted_users.push((*timestamp, *user));
+                        }
+                    }
+                }
+                
+                // Apply pagination
+                let paginated_users = if start_idx < sorted_users.len() {
+                    let end_idx = std::cmp::min(start_idx + limit, sorted_users.len());
+                    &sorted_users[start_idx..end_idx]
+                } else {
+                    &[]
+                };
+                
+                // Create detail objects for the paginated users
+                for (timestamp, user) in paginated_users {
+                    let consecutive_days = storage.consecutive_days.get(user).cloned().unwrap_or(0);
+                    let total_points = storage.user_points.get(user).cloned().unwrap_or(0);
+                    
+                    page_details.push(CheckInDetail {
+                        user: *user,
+                        last_checkin_time: *timestamp,
+                        consecutive_days,
+                        total_points,
+                    });
+                }
+            },
+            "consecutive_days" => {
+                // Use the consecutive_days_index for efficient retrieval
+                let mut sorted_users = Vec::new();
+                
+                if sort_order == "asc" {
+                    // Ascending order - iterate from lowest to highest
+                    for (days, users) in &storage.consecutive_days_index {
+                        for user in users {
+                            sorted_users.push((*days, *user));
+                        }
+                    }
+                } else {
+                    // Descending order - iterate from highest to lowest
+                    for (days, users) in storage.consecutive_days_index.iter().rev() {
+                        for user in users {
+                            sorted_users.push((*days, *user));
+                        }
+                    }
+                }
+                
+                // Apply pagination
+                let paginated_users = if start_idx < sorted_users.len() {
+                    let end_idx = std::cmp::min(start_idx + limit, sorted_users.len());
+                    &sorted_users[start_idx..end_idx]
+                } else {
+                    &[]
+                };
+                
+                // Create detail objects for the paginated users
+                for (days, user) in paginated_users {
+                    let last_checkin_time = storage.user_checkins.get(user).cloned().unwrap_or(0);
+                    let total_points = storage.user_points.get(user).cloned().unwrap_or(0);
+                    
+                    page_details.push(CheckInDetail {
+                        user: *user,
+                        last_checkin_time,
+                        consecutive_days: *days,
+                        total_points,
+                    });
+                }
+            },
+            "total_points" => {
+                // Use the total_points_index for efficient retrieval
+                let mut sorted_users = Vec::new();
+                
+                if sort_order == "asc" {
+                    // Ascending order - iterate from lowest to highest
+                    for (points, users) in &storage.total_points_index {
+                        for user in users {
+                            sorted_users.push((*points, *user));
+                        }
+                    }
+                } else {
+                    // Descending order - iterate from highest to lowest
+                    for (points, users) in storage.total_points_index.iter().rev() {
+                        for user in users {
+                            sorted_users.push((*points, *user));
+                        }
+                    }
+                }
+                
+                // Apply pagination
+                let paginated_users = if start_idx < sorted_users.len() {
+                    let end_idx = std::cmp::min(start_idx + limit, sorted_users.len());
+                    &sorted_users[start_idx..end_idx]
+                } else {
+                    &[]
+                };
+                
+                // Create detail objects for the paginated users
+                for (points, user) in paginated_users {
+                    let last_checkin_time = storage.user_checkins.get(user).cloned().unwrap_or(0);
+                    let consecutive_days = storage.consecutive_days.get(user).cloned().unwrap_or(0);
+                    
+                    page_details.push(CheckInDetail {
+                        user: *user,
+                        last_checkin_time,
+                        consecutive_days,
+                        total_points: *points,
+                    });
+                }
+            },
+            _ => {
+                // Default to last_checkin_time desc if invalid sort field
+                // (should never happen due to validation above)
+                let mut sorted_users = Vec::new();
+                
+                // Descending order - iterate from newest to oldest
+                for (timestamp, users) in storage.checkin_time_index.iter().rev() {
+                    for user in users {
+                        sorted_users.push((*timestamp, *user));
+                    }
+                }
+                
+                // Apply pagination
+                let paginated_users = if start_idx < sorted_users.len() {
+                    let end_idx = std::cmp::min(start_idx + limit, sorted_users.len());
+                    &sorted_users[start_idx..end_idx]
+                } else {
+                    &[]
+                };
+                
+                // Create detail objects for the paginated users
+                for (timestamp, user) in paginated_users {
+                    let consecutive_days = storage.consecutive_days.get(user).cloned().unwrap_or(0);
+                    let total_points = storage.user_points.get(user).cloned().unwrap_or(0);
+                    
+                    page_details.push(CheckInDetail {
+                        user: *user,
+                        last_checkin_time: *timestamp,
+                        consecutive_days,
+                        total_points,
+                    });
+                }
+            }
+        }
+        
+        Ok(PaginatedCheckInDetails {
+            details: page_details,
+            total_count,
+            page: effective_page,
+            page_size,
+            total_pages,
+        })
     })
 }
 
@@ -617,7 +955,7 @@ fn restore_state_after_upgrade() {
     use ic_cdk::storage::stable_restore;
     
     // Try to restore the state
-    let restore_result: Result<(DailyCheckInStorage,), String> = stable_restore();
+    let restore_result: Result<(Storage,), String> = stable_restore();
     
     match restore_result {
         Ok((storage_data,)) => {
@@ -639,12 +977,12 @@ fn restore_state_after_upgrade() {
             ic_cdk::println!("Starting with empty state");
             
             // Initialize with default state
-            let caller_principal = caller();
+            // Get the caller principal for initialization
             STORAGE.with(|storage| {
                 let mut storage = storage.borrow_mut();
                 
                 // Add the deployer as an admin
-                storage.admins.push(caller_principal);
+                storage.admins.insert(caller());
                 
                 // Set default task configuration
                 storage.task_config = TaskConfig {

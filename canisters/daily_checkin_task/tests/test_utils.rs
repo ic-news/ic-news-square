@@ -1,6 +1,6 @@
 // Test utilities for daily check-in task canister
 use candid::Principal;
-use ic_cdk::api::time;
+use ic_cdk::api::{time, caller};
 use std::cell::RefCell;
 use std::collections::HashMap;
 
@@ -34,7 +34,7 @@ pub fn clear_mock_time() {
 // Get time (real or mocked)
 pub fn get_time() -> u64 {
     MOCK_TIME.with(|t| {
-        t.borrow().unwrap_or_else(|| time())
+        t.borrow().unwrap_or_else(|| time() / 1_000_000)
     })
 }
 
@@ -55,7 +55,7 @@ pub fn clear_mock_caller() {
 // Get caller (real or mocked)
 pub fn get_caller() -> Principal {
     MOCK_CALLER.with(|c| {
-        c.borrow().unwrap_or_else(|| ic_cdk::api::caller())
+        c.borrow().unwrap_or_else(|| caller())
     })
 }
 
@@ -66,7 +66,7 @@ pub fn test_principal(id: u8) -> Principal {
 
 // Helper function to get current timestamp in milliseconds
 pub fn current_time_millis() -> u64 {
-    get_time() / 1_000_000
+    get_time()
 }
 
 // Helper function to get today's start timestamp in seconds

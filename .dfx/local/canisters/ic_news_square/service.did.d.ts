@@ -15,56 +15,69 @@ export interface ApiResponse {
   'success' : boolean,
 }
 export interface ApiResponse_1 {
-  'data' : [] | [null],
+  'data' : [] | [boolean],
   'error' : [] | [ApiError],
   'success' : boolean,
 }
-export interface ApiResponse_2 {
-  'data' : [] | [Array<string>],
+export interface ApiResponse_10 {
+  'data' : [] | [HeartbeatIntervalResponse],
   'error' : [] | [ApiError],
   'success' : boolean,
 }
-export interface ApiResponse_3 {
-  'data' : [] | [Array<[ErrorCode, bigint, bigint, bigint]>],
-  'error' : [] | [ApiError],
-  'success' : boolean,
-}
-export interface ApiResponse_4 {
-  'data' : [] | [Array<UserSocialResponse>],
-  'error' : [] | [ApiError],
-  'success' : boolean,
-}
-export interface ApiResponse_5 {
+export interface ApiResponse_11 {
   'data' : [] | [Array<[ErrorCode, bigint]>],
   'error' : [] | [ApiError],
   'success' : boolean,
 }
-export interface ApiResponse_6 {
+export interface ApiResponse_12 {
   'data' : [] | [UserLeaderboardResponse],
   'error' : [] | [ApiError],
   'success' : boolean,
 }
-export interface ApiResponse_7 {
+export interface ApiResponse_13 {
   'data' : [] | [UserProfileResponse],
   'error' : [] | [ApiError],
   'success' : boolean,
 }
-export interface ArticleResponse {
-  'id' : string,
-  'status' : ContentStatus,
-  'updated_at' : bigint,
-  'content' : string,
-  'author_info' : UserSocialResponse,
-  'hashtags' : Array<string>,
-  'shares_count' : bigint,
-  'media_urls' : Array<string>,
-  'news_reference' : [] | [NewsReferenceRequest],
-  'created_at' : bigint,
-  'author' : Principal,
-  'token_mentions' : Array<string>,
-  'comments_count' : bigint,
-  'visibility' : ContentVisibility,
-  'likes_count' : bigint,
+export interface ApiResponse_2 {
+  'data' : [] | [string],
+  'error' : [] | [ApiError],
+  'success' : boolean,
+}
+export interface ApiResponse_3 {
+  'data' : [] | [Array<[string, string]>],
+  'error' : [] | [ApiError],
+  'success' : boolean,
+}
+export interface ApiResponse_4 {
+  'data' : [] | [null],
+  'error' : [] | [ApiError],
+  'success' : boolean,
+}
+export interface ApiResponse_5 {
+  'data' : [] | [CyclesNotificationsResponse],
+  'error' : [] | [ApiError],
+  'success' : boolean,
+}
+export interface ApiResponse_6 {
+  'data' : [] | [CyclesThresholdConfig],
+  'error' : [] | [ApiError],
+  'success' : boolean,
+}
+export interface ApiResponse_7 {
+  'data' : [] | [Array<string>],
+  'error' : [] | [ApiError],
+  'success' : boolean,
+}
+export interface ApiResponse_8 {
+  'data' : [] | [Array<[ErrorCode, bigint, bigint, bigint]>],
+  'error' : [] | [ApiError],
+  'success' : boolean,
+}
+export interface ApiResponse_9 {
+  'data' : [] | [Array<UserSocialResponse>],
+  'error' : [] | [ApiError],
+  'success' : boolean,
 }
 export interface AwardPointsRequest {
   'principal' : Principal,
@@ -79,13 +92,12 @@ export interface CommentResponse {
   'content' : string,
   'child_comments' : Array<CommentResponse>,
   'author_info' : UserSocialResponse,
-  'shares_count' : bigint,
   'created_at' : bigint,
   'author' : Principal,
   'parent_id' : string,
   'is_liked' : boolean,
   'comments_count' : bigint,
-  'visibility' : ContentVisibility,
+  'visibility' : ContentVisibility_1,
   'likes_count' : bigint,
   'parent_type' : ParentType,
 }
@@ -101,7 +113,6 @@ export interface CompleteTaskRequest {
 }
 export interface ContentCreationRequirement {
   'comment_count' : [] | [bigint],
-  'article_count' : [] | [bigint],
   'post_count' : [] | [bigint],
   'required_hashtags' : [] | [Array<string>],
 }
@@ -126,16 +137,9 @@ export type ContentStatus = { 'UnderReview' : null } |
 export type ContentVisibility = { 'Private' : null } |
   { 'FollowersOnly' : null } |
   { 'Public' : null };
-export interface CreateArticleRequest {
-  'id' : [] | [string],
-  'is_nsfw' : [] | [boolean],
-  'content' : string,
-  'hashtags' : Array<string>,
-  'media_urls' : Array<string>,
-  'news_reference' : [] | [NewsReferenceRequest],
-  'token_mentions' : [] | [Array<string>],
-  'visibility' : [] | [ContentVisibility],
-}
+export type ContentVisibility_1 = { 'Private' : null } |
+  { 'FollowersOnly' : null } |
+  { 'Public' : null };
 export interface CreateCommentRequest {
   'id' : [] | [string],
   'content' : string,
@@ -149,7 +153,7 @@ export interface CreatePostRequest {
   'hashtags' : Array<string>,
   'media_urls' : Array<string>,
   'tags' : [] | [Array<string>],
-  'news_reference' : [] | [NewsReferenceRequest],
+  'news_reference' : [] | [NewsReference],
   'token_mentions' : [] | [Array<string>],
   'mentions' : [] | [Array<string>],
   'visibility' : [] | [ContentVisibility],
@@ -258,7 +262,7 @@ export type ErrorSeverity = { 'Error' : null } |
   { 'Critical' : null } |
   { 'Warning' : null };
 export interface FeedResponse {
-  'articles' : Array<ArticleResponse>,
+  'total' : bigint,
   'comments' : Array<CommentResponse>,
   'posts' : Array<PostResponse>,
   'next_offset' : bigint,
@@ -272,6 +276,7 @@ export interface GetTrendingTopicsRequest {
   'limit' : [] | [number],
   'time_range_hours' : [] | [number],
 }
+export interface HeartbeatIntervalResponse { 'interval_hours' : bigint }
 export interface HotTagInfo {
   'name' : string,
   'count' : bigint,
@@ -297,27 +302,24 @@ export interface LikesResponse {
   'content_type' : ParentType,
   'likes' : Array<UserLikeInfo>,
 }
+export interface LogEntry { 'message' : string, 'timestamp' : bigint }
 export interface LoginStreakRequirement { 'days_required' : bigint }
-export interface NewsReferenceRequest {
+export interface NewsReference {
   'metadata' : Array<[string, string]>,
   'canister_id' : Principal,
 }
 export interface NotificationPreferences {
-  'shares' : boolean,
   'follows' : boolean,
   'likes' : boolean,
   'comments' : boolean,
   'mentions' : boolean,
   'system' : boolean,
 }
-export interface NotificationSettings {
-  'email_address' : [] | [string],
-  'notification_frequency_hours' : bigint,
-  'email_enabled' : boolean,
+export interface PaginationParams {
+  'offset' : [] | [bigint],
+  'limit' : [] | [bigint],
 }
-export interface PaginationParams { 'offset' : bigint, 'limit' : bigint }
-export type ParentType = { 'Article' : null } |
-  { 'Post' : null } |
+export type ParentType = { 'Post' : null } |
   { 'Comment' : null };
 export interface PersonalizedRecommendationsRequest {
   'diversity_factor' : [] | [number],
@@ -336,15 +338,14 @@ export interface PostResponse {
   'content' : string,
   'author_info' : UserSocialResponse,
   'hashtags' : Array<string>,
-  'shares_count' : bigint,
   'media_urls' : Array<string>,
   'tags' : Array<string>,
-  'news_reference' : [] | [NewsReferenceRequest],
+  'news_reference' : [] | [NewsReference],
   'created_at' : bigint,
   'author' : Principal,
   'token_mentions' : Array<string>,
   'comments_count' : bigint,
-  'visibility' : ContentVisibility,
+  'visibility' : ContentVisibility_1,
   'likes_count' : bigint,
 }
 export interface PostsResponse {
@@ -377,47 +378,39 @@ export type Result = { 'Ok' : null } |
   { 'Err' : SquareError };
 export type Result_1 = { 'Ok' : null } |
   { 'Err' : string };
-export type Result_10 = { 'Ok' : CyclesConsumptionResponse } |
+export type Result_10 = { 'Ok' : HotTagsResponse } |
   { 'Err' : SquareError };
-export type Result_11 = { 'Ok' : CyclesNotificationsResponse } |
+export type Result_11 = { 'Ok' : LikesResponse } |
   { 'Err' : SquareError };
-export type Result_12 = { 'Ok' : CyclesThresholdConfig } |
+export type Result_12 = { 'Ok' : boolean } |
   { 'Err' : SquareError };
-export type Result_13 = { 'Ok' : HotTagsResponse } |
+export type Result_13 = { 'Ok' : PostResponse } |
   { 'Err' : SquareError };
-export type Result_14 = { 'Ok' : LikesResponse } |
+export type Result_14 = { 'Ok' : PostsResponse } |
   { 'Err' : SquareError };
-export type Result_15 = { 'Ok' : NotificationSettings } |
+export type Result_15 = { 'Ok' : Array<TrendingTopicResponse> } |
   { 'Err' : SquareError };
-export type Result_16 = { 'Ok' : PostResponse } |
+export type Result_16 = { 'Ok' : Array<[string, Value]> } |
   { 'Err' : SquareError };
-export type Result_17 = { 'Ok' : PostsResponse } |
-  { 'Err' : SquareError };
-export type Result_18 = { 'Ok' : SharesResponse } |
-  { 'Err' : SquareError };
-export type Result_19 = { 'Ok' : Array<TrendingTopicResponse> } |
+export type Result_17 = { 'Ok' : Array<Principal> } |
+  { 'Err' : string };
+export type Result_18 = { 'Ok' : Array<SearchResultResponse> } |
   { 'Err' : SquareError };
 export type Result_2 = { 'Ok' : TaskCompletionResponse } |
   { 'Err' : SquareError };
-export type Result_20 = { 'Ok' : Array<[string, Value]> } |
+export type Result_3 = { 'Ok' : CommentResponse } |
   { 'Err' : SquareError };
-export type Result_21 = { 'Ok' : Array<Principal> } |
-  { 'Err' : string };
-export type Result_22 = { 'Ok' : Array<SearchResultResponse> } |
+export type Result_4 = { 'Ok' : string } |
   { 'Err' : SquareError };
-export type Result_3 = { 'Ok' : ArticleResponse } |
+export type Result_5 = { 'Ok' : FeedResponse } |
   { 'Err' : SquareError };
-export type Result_4 = { 'Ok' : CommentResponse } |
+export type Result_6 = { 'Ok' : Array<TaskResponse> } |
   { 'Err' : SquareError };
-export type Result_5 = { 'Ok' : string } |
+export type Result_7 = { 'Ok' : CommentsResponse } |
   { 'Err' : SquareError };
-export type Result_6 = { 'Ok' : FeedResponse } |
+export type Result_8 = { 'Ok' : CyclesBalanceResponse } |
   { 'Err' : SquareError };
-export type Result_7 = { 'Ok' : Array<TaskResponse> } |
-  { 'Err' : SquareError };
-export type Result_8 = { 'Ok' : CommentsResponse } |
-  { 'Err' : SquareError };
-export type Result_9 = { 'Ok' : CyclesBalanceResponse } |
+export type Result_9 = { 'Ok' : CyclesConsumptionResponse } |
   { 'Err' : SquareError };
 export interface SearchRequest {
   'pagination' : PaginationParams,
@@ -433,18 +426,11 @@ export interface SearchResultResponse {
   'created_at' : bigint,
   'author' : UserSocialResponse,
 }
-export interface SharesResponse {
-  'content_id' : string,
-  'count' : bigint,
-  'content_type' : ParentType,
-}
 export interface SocialInteractionRequirement {
-  'share_count' : [] | [bigint],
   'like_count' : [] | [bigint],
   'follow_count' : [] | [bigint],
 }
-export type SortOption = { 'MostShared' : null } |
-  { 'MostCommented' : null } |
+export type SortOption = { 'MostCommented' : null } |
   { 'Trending' : null } |
   { 'MostLiked' : null } |
   { 'Latest' : null };
@@ -506,15 +492,6 @@ export interface TrendingTopicResponse {
   'count' : bigint,
   'trend_direction' : TrendDirection,
 }
-export interface UpdateArticleRequest {
-  'id' : string,
-  'content' : string,
-  'hashtags' : [] | [Array<string>],
-  'media_urls' : [] | [Array<string>],
-  'news_reference' : [] | [NewsReferenceRequest],
-  'token_mentions' : [] | [Array<string>],
-  'visibility' : [] | [ContentVisibility],
-}
 export interface UpdateCommentRequest { 'id' : string, 'content' : string }
 export interface UpdateCyclesThresholdRequest {
   'critical_threshold' : [] | [bigint],
@@ -527,9 +504,9 @@ export interface UpdatePostRequest {
   'hashtags' : [] | [Array<string>],
   'media_urls' : [] | [Array<string>],
   'tags' : [] | [Array<string>],
-  'news_reference' : [] | [NewsReferenceRequest],
+  'news_reference' : [] | [NewsReference],
   'token_mentions' : [] | [Array<string>],
-  'visibility' : [] | [ContentVisibility],
+  'visibility' : [] | [ContentVisibility_1],
 }
 export interface UpdateProfileRequest {
   'bio' : [] | [string],
@@ -543,14 +520,15 @@ export interface UpdateProfileRequest {
 export interface UserLeaderboardItem {
   'principal' : Principal,
   'username' : string,
-  'last_claim_date' : [] | [bigint],
+  'comment_count' : bigint,
+  'last_claim_date' : bigint,
   'consecutive_daily_logins' : bigint,
+  'like_count' : bigint,
   'rank' : bigint,
-  'article_count' : bigint,
   'post_count' : bigint,
+  'reputation' : bigint,
   'handle' : string,
   'followers_count' : bigint,
-  'points' : bigint,
   'avatar' : string,
 }
 export interface UserLeaderboardResponse {
@@ -566,22 +544,26 @@ export interface UserLikeInfo {
 }
 export interface UserPrivacySettings {
   'notification_preferences' : NotificationPreferences,
-  'content_visibility' : ContentVisibility,
+  'content_visibility' : ContentVisibility_1,
   'interaction_preferences' : InteractionPreferences,
-  'profile_visibility' : ContentVisibility,
+  'profile_visibility' : ContentVisibility_1,
 }
 export interface UserProfileResponse {
   'bio' : string,
   'is_following' : boolean,
   'status' : UserStatus,
   'last_login' : bigint,
+  'updated_at' : bigint,
   'principal' : Principal,
   'username' : string,
+  'interests' : Array<string>,
   'role' : UserRole,
   'following_count' : bigint,
+  'created_at' : bigint,
   'handle' : string,
   'registered_at' : bigint,
   'followers_count' : bigint,
+  'privacy_settings' : [] | [UserPrivacySettings],
   'social_links' : Array<[string, string]>,
   'avatar' : string,
 }
@@ -594,6 +576,7 @@ export interface UserSocialResponse {
   'is_following' : boolean,
   'principal' : Principal,
   'username' : string,
+  'interests' : Array<string>,
   'following_count' : bigint,
   'is_followed_by_caller' : boolean,
   'handle' : string,
@@ -618,72 +601,74 @@ export interface _SERVICE {
   'acknowledge_notification' : ActorMethod<[bigint], Result>,
   'add_manager' : ActorMethod<[Principal], Result_1>,
   'award_points' : ActorMethod<[AwardPointsRequest], Result>,
+  'clear_logs' : ActorMethod<[], boolean>,
   'complete_task' : ActorMethod<[CompleteTaskRequest], Result_2>,
-  'create_article' : ActorMethod<[CreateArticleRequest], Result_3>,
-  'create_comment' : ActorMethod<[CreateCommentRequest], Result_4>,
+  'create_comment' : ActorMethod<[CreateCommentRequest], Result_3>,
   'create_post' : ActorMethod<[CreatePostRequest], ApiResponse>,
-  'create_task' : ActorMethod<[CreateTaskRequest], Result_5>,
-  'delete_article' : ActorMethod<[string], Result>,
+  'create_task' : ActorMethod<[CreateTaskRequest], Result_4>,
+  'debug_fix_user_data' : ActorMethod<[string], ApiResponse_1>,
+  'debug_fix_user_profile' : ActorMethod<[string], ApiResponse_2>,
+  'debug_list_all_users' : ActorMethod<[], ApiResponse_3>,
   'delete_comment' : ActorMethod<[string], Result>,
   'delete_post' : ActorMethod<[string], Result>,
   'delete_task' : ActorMethod<[string], Result>,
-  'discover_content' : ActorMethod<[DiscoverContentRequest], Result_6>,
-  'follow_user' : ActorMethod<[Principal], ApiResponse_1>,
-  'get_article' : ActorMethod<[string], Result_3>,
-  'get_available_tasks' : ActorMethod<[], Result_7>,
-  'get_comment' : ActorMethod<[string], Result_4>,
-  'get_comments' : ActorMethod<[string, string, PaginationParams], Result_8>,
-  'get_cycles_balance' : ActorMethod<[], Result_9>,
-  'get_cycles_consumption_history' : ActorMethod<[], Result_10>,
-  'get_cycles_notifications' : ActorMethod<[], Result_11>,
-  'get_cycles_threshold' : ActorMethod<[], Result_12>,
-  'get_error_history' : ActorMethod<[], ApiResponse_2>,
-  'get_error_stats' : ActorMethod<[], ApiResponse_3>,
-  'get_followers' : ActorMethod<[[] | [Principal]], ApiResponse_4>,
-  'get_following' : ActorMethod<[[] | [Principal]], ApiResponse_4>,
-  'get_hot_tags' : ActorMethod<[GetHotTagsRequest], Result_13>,
-  'get_likes' : ActorMethod<[string, ParentType], Result_14>,
-  'get_most_common_errors' : ActorMethod<[bigint], ApiResponse_5>,
-  'get_notification_settings' : ActorMethod<[], Result_15>,
+  'discover_content' : ActorMethod<[DiscoverContentRequest], Result_5>,
+  'follow_user' : ActorMethod<[Principal], ApiResponse_4>,
+  'get_available_tasks' : ActorMethod<[], Result_6>,
+  'get_comment' : ActorMethod<[string], Result_3>,
+  'get_comments' : ActorMethod<[string, string, PaginationParams], Result_7>,
+  'get_cycles_balance' : ActorMethod<[], Result_8>,
+  'get_cycles_consumption_history' : ActorMethod<[], Result_9>,
+  'get_cycles_notifications' : ActorMethod<[], ApiResponse_5>,
+  'get_cycles_threshold' : ActorMethod<[], ApiResponse_6>,
+  'get_error_history' : ActorMethod<[], ApiResponse_7>,
+  'get_error_stats' : ActorMethod<[], ApiResponse_8>,
+  'get_followers' : ActorMethod<[[] | [string]], ApiResponse_9>,
+  'get_following' : ActorMethod<[[] | [string]], ApiResponse_9>,
+  'get_heartbeat_interval' : ActorMethod<[], ApiResponse_10>,
+  'get_hot_tags' : ActorMethod<[GetHotTagsRequest], Result_10>,
+  'get_likes' : ActorMethod<[string, ParentType], Result_11>,
+  'get_logs' : ActorMethod<[], Array<LogEntry>>,
+  'get_most_common_errors' : ActorMethod<[bigint], ApiResponse_11>,
+  'get_notification_settings' : ActorMethod<[], Result_12>,
   'get_personalized_recommendations' : ActorMethod<
     [PersonalizedRecommendationsRequest],
-    Result_6
+    Result_5
   >,
-  'get_post' : ActorMethod<[string], Result_16>,
-  'get_posts' : ActorMethod<[PaginationParams], Result_17>,
-  'get_shares' : ActorMethod<[string, ParentType], Result_18>,
-  'get_trending_topics' : ActorMethod<[GetTrendingTopicsRequest], Result_19>,
+  'get_post' : ActorMethod<[string], Result_13>,
+  'get_posts' : ActorMethod<[PaginationParams], Result_14>,
+  'get_recent_logs' : ActorMethod<[bigint], Array<LogEntry>>,
+  'get_trending_topics' : ActorMethod<[GetTrendingTopicsRequest], Result_15>,
   'get_user_content' : ActorMethod<
-    [[] | [Principal], [] | [ParentType], PaginationParams],
-    Result_6
+    [[] | [string], [] | [ParentType], PaginationParams],
+    Result_5
   >,
-  'get_user_leaderboard' : ActorMethod<[PaginationParams], ApiResponse_6>,
-  'get_user_profile' : ActorMethod<[[] | [Principal]], ApiResponse_7>,
-  'get_user_rewards' : ActorMethod<[], Result_20>,
+  'get_user_leaderboard' : ActorMethod<[PaginationParams], ApiResponse_12>,
+  'get_user_profile' : ActorMethod<[[] | [string]], ApiResponse_13>,
+  'get_user_rewards' : ActorMethod<[], Result_16>,
   'like_content' : ActorMethod<[LikeContentRequest], Result>,
-  'list_managers' : ActorMethod<[], Result_21>,
-  'migrate_to_sharded_storage' : ActorMethod<[], Result_5>,
+  'list_managers' : ActorMethod<[], Result_17>,
+  'migrate_storage' : ActorMethod<[], ApiResponse_2>,
   'moderate_content' : ActorMethod<[ContentModerationRequest], Result>,
-  'register_user' : ActorMethod<[RegisterUserRequest], ApiResponse_1>,
+  'register_user' : ActorMethod<[RegisterUserRequest], ApiResponse_4>,
   'remove_manager' : ActorMethod<[Principal], Result_1>,
   'report_content' : ActorMethod<[ReportContentRequest], Result>,
-  'search_content' : ActorMethod<[SearchRequest], Result_22>,
-  'share_content' : ActorMethod<[string, ParentType], Result>,
-  'unfollow_user' : ActorMethod<[Principal], ApiResponse_1>,
+  'search_content' : ActorMethod<[SearchRequest], Result_18>,
+  'unfollow_user' : ActorMethod<[Principal], ApiResponse_4>,
   'unlike_content' : ActorMethod<[LikeContentRequest], Result>,
-  'update_article' : ActorMethod<[UpdateArticleRequest], Result_3>,
-  'update_comment' : ActorMethod<[UpdateCommentRequest], Result_4>,
+  'update_comment' : ActorMethod<[UpdateCommentRequest], Result_3>,
   'update_cycles_threshold' : ActorMethod<
     [UpdateCyclesThresholdRequest],
-    Result
+    ApiResponse_6
   >,
-  'update_notification_settings' : ActorMethod<
-    [[] | [boolean], [] | [string], [] | [bigint]],
-    Result
+  'update_heartbeat_interval' : ActorMethod<
+    [HeartbeatIntervalResponse],
+    ApiResponse_10
   >,
+  'update_notification_settings' : ActorMethod<[[] | [boolean]], Result>,
   'update_post' : ActorMethod<[UpdatePostRequest], ApiResponse>,
   'update_task' : ActorMethod<[CreateTaskRequest], Result>,
-  'update_user_profile' : ActorMethod<[UpdateProfileRequest], ApiResponse_1>,
+  'update_user_profile' : ActorMethod<[UpdateProfileRequest], ApiResponse_2>,
 }
 export declare const idlFactory: IDL.InterfaceFactory;
 export declare const init: (args: { IDL: typeof IDL }) => IDL.Type[];

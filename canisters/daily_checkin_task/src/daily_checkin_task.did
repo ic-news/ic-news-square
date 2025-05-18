@@ -1,3 +1,9 @@
+type CheckInDetail = record {
+  total_points : nat64;
+  user : principal;
+  consecutive_days : nat64;
+  last_checkin_time : nat64;
+};
 type DailyCheckInResponse = record {
   bonus_points : nat64;
   total_points : nat64;
@@ -6,6 +12,16 @@ type DailyCheckInResponse = record {
   points_earned : nat64;
   consecutive_days : nat64;
 };
+type PaginatedCheckInDetails = record {
+  page_size : nat64;
+  page : nat64;
+  total_pages : nat64;
+  details : vec CheckInDetail;
+  total_count : nat64;
+};
+type Result = variant { Ok : DailyCheckInResponse; Err : text };
+type Result_1 = variant { Ok : PaginatedCheckInDetails; Err : text };
+type Result_2 = variant { Ok : TaskVerificationResponse; Err : text };
 type TaskConfig = record {
   title : text;
   description : text;
@@ -46,8 +62,11 @@ type VerificationData = record {
 service : () -> {
   add_admin : (principal) -> ();
   award_points : (principal, nat64, text) -> ();
-  claim_daily_check_in : () -> (DailyCheckInResponse);
+  claim_daily_check_in : () -> (Result);
   get_admins : () -> (vec principal) query;
+  get_all_checkin_details : (nat64, nat64, opt text, opt text) -> (
+      Result_1,
+    ) query;
   get_checkin_status : (principal) -> (vec record { text; text }) query;
   get_my_checkin_status : () -> (vec record { text; text }) query;
   get_task_config : () -> (TaskConfig) query;
@@ -55,5 +74,5 @@ service : () -> {
   remove_admin : (principal) -> ();
   reset_user_streak : (principal) -> ();
   update_task_config : (TaskConfig) -> ();
-  verify_task : (TaskVerificationRequest) -> (TaskVerificationResponse);
+  verify_task : (TaskVerificationRequest) -> (Result_2);
 }

@@ -1,67 +1,74 @@
 use candid::{CandidType, Deserialize, Encode, Nat, Principal};
-use ic_cdk::api::time;
-use ic_cdk::api::call;
+use ic_cdk::api::{time, call};
 use ic_cdk::id;
 use std::collections::HashMap;
-
 use crate::Value;
-
 use crate::auth::is_manager_or_admin;
-use crate::models::reward;
 use crate::models::reward::*;
 use crate::models::error::{SquareError, SquareResult};
-use crate::storage::{STORAGE, UserRewards, UserTasks, PointsTransaction};
-use crate::storage::sharded::{SHARDED_USER_REWARDS, SHARDED_USER_TASKS};
+use crate::storage::STORAGE;
 use crate::utils::error_handler::*;
-
-
 
 // Initialize default tasks with configurable active state
 pub fn init_default_tasks(enable_daily_post: bool, enable_social_engagement: bool) {
-    STORAGE.with(|storage| {
-        let mut storage = storage.borrow_mut();
-        
-        // Only initialize if no tasks exist yet
-        if storage.tasks.is_empty() {
-            // Also initialize sharded storage for tasks
-            // This ensures we're using sharded storage by default
-            // Daily post task
-            let daily_post = TaskDefinition {
-                id: "daily_post".to_string(),
-                title: "Daily Post".to_string(),
-                description: "Create a post daily to earn points".to_string(),
-                points: 50,
-                task_type: TaskType::Daily,
-                completion_criteria: "Create at least one post".to_string(),
-                expiration_time: None,
-                created_at: time(),
-                updated_at: time(),
-                is_active: enable_daily_post,
-                requirements: None,
-                canister_id: ic_cdk::id(),
-            };
-            
-            // Social engagement task
-            let social_engagement = TaskDefinition {
-                id: "social_engagement".to_string(),
-                title: "Social Engagement".to_string(),
-                description: "Engage with other users to earn points".to_string(),
-                points: 100,
-                task_type: TaskType::Daily,
-                completion_criteria: "Like or comment on at least 3 posts".to_string(),
-                expiration_time: None,
-                created_at: time(),
-                updated_at: time(),
-                is_active: enable_social_engagement,
-                requirements: None,
-                canister_id: ic_cdk::id(),
-            };
-            
-            // Add tasks to storage
-            storage.tasks.insert(daily_post.id.clone(), daily_post);
-            storage.tasks.insert(social_engagement.id.clone(), social_engagement);
-        }
+    const MODULE: &str = "services::reward";
+    const FUNCTION: &str = "init_default_tasks";
+    let now = time() / 1_000_000;
+    // Check if tasks already exist in main storage
+    let tasks_exist = STORAGE.with(|storage| {
+        let store = storage.borrow();
+        store.tasks.as_ref().map_or(false, |tasks| !tasks.is_empty())
     });
+    
+    // Only initialize if no tasks exist yet
+    if !tasks_exist {
+        // Daily post task
+        let daily_post = TaskDefinition {
+            id: "daily_post".to_string(),
+            title: "Daily Post".to_string(),
+            description: "Create a post daily to earn points".to_string(),
+            points: 50,
+            task_type: TaskType::Daily,
+            completion_criteria: "Create at least one post".to_string(),
+            expiration_time: None,
+            created_at: now,
+            updated_at: now,
+            is_active: enable_daily_post,
+            requirements: None,
+            canister_id: ic_cdk::id(),
+        };
+        
+        // Social engagement task
+        let social_engagement = TaskDefinition {
+            id: "social_engagement".to_string(),
+            title: "Social Engagement".to_string(),
+            description: "Engage with other users to earn points".to_string(),
+            points: 100,
+            task_type: TaskType::Daily,
+            completion_criteria: "Like or comment on at least 3 posts".to_string(),
+            expiration_time: None,
+            created_at: now,
+            updated_at: now,
+            is_active: enable_social_engagement,
+            requirements: None,
+            canister_id: ic_cdk::id(),
+        };
+        
+        // Add tasks to main storage
+        STORAGE.with(|storage| {
+            let mut store = storage.borrow_mut();
+            if store.tasks.is_none() {
+                store.tasks = Some(HashMap::new());
+            }
+            
+            if let Some(tasks) = &mut store.tasks {
+                tasks.insert(daily_post.id.clone(), daily_post);
+                tasks.insert(social_engagement.id.clone(), social_engagement);
+            }
+        });
+        
+        ic_cdk::println!("Default tasks initialized in main storage");
+    }
 }
 
 // Default initialization with all tasks enabled
@@ -71,8 +78,10 @@ pub fn init_default_tasks_all_enabled() {
 
 // Initialize default tasks only if no tasks exist
 pub fn init_default_tasks_if_empty() {
+    // Check if tasks exist in main storage
     let tasks_exist = STORAGE.with(|storage| {
-        !storage.borrow().tasks.is_empty()
+        let store = storage.borrow();
+        store.tasks.as_ref().map_or(false, |tasks| !tasks.is_empty())
     });
     
     if !tasks_exist {
@@ -85,25 +94,33 @@ pub fn init_default_tasks_if_empty() {
 
 // Toggle task active status
 pub fn toggle_task_status(task_id: &str, active: bool) -> SquareResult<()> {
+    const MODULE: &str = "services::reward";
+    const FUNCTION: &str = "toggle_task_status";
+    let now = time()  / 1_000_000;
     // Only managers or admins can toggle task status
     is_manager_or_admin().map_err(|e| {
         SquareError::Unauthorized(format!("Only managers or admins can toggle task status: {}", e))
     })?;
     
+    // Update task in main storage
     STORAGE.with(|storage| {
-        let mut storage = storage.borrow_mut();
+        let mut store = storage.borrow_mut();
         
-        // Check if task exists
-        if let Some(mut task) = storage.tasks.get(task_id).cloned() {
-            // Update task status
-            task.is_active = active;
-            task.updated_at = time();
-            
-            // Save updated task
-            storage.tasks.insert(task_id.to_string(), task);
-            Ok(())
+        if let Some(tasks) = &mut store.tasks {
+            // Check if task exists
+            if let Some(mut task) = tasks.get(task_id).cloned() {
+                // Update task status
+                task.is_active = active;
+                task.updated_at = now;
+                
+                // Save updated task
+                tasks.insert(task_id.to_string(), task);
+                Ok(())
+            } else {
+                Err(SquareError::NotFound(format!("Task with ID {} not found", task_id)))
+            }
         } else {
-            Err(SquareError::NotFound(format!("Task with ID {} not found", task_id)))
+            Err(SquareError::NotFound("Tasks collection not initialized".to_string()))
         }
     })
 }
@@ -117,10 +134,12 @@ pub fn toggle_task_status(task_id: &str, active: bool) -> SquareResult<()> {
 pub fn complete_task(request: CompleteTaskRequest, caller: Principal) -> SquareResult<TaskCompletionResponse> {
     const MODULE: &str = "services::reward";
     const FUNCTION: &str = "complete_task";
-    
+    let now = time() / 1_000_000;
+    // Get task info from main storage
     let task_info = STORAGE.with(|storage| {
-        let storage = storage.borrow();
-        storage.tasks.get(&request.task_id).cloned()
+        let store = storage.borrow();
+        store.tasks.as_ref()
+            .and_then(|tasks| tasks.get(&request.task_id).cloned())
     });
     
     let _task_type = match task_info {
@@ -136,64 +155,122 @@ pub fn complete_task(request: CompleteTaskRequest, caller: Principal) -> SquareR
     
     let _proof = request.task_id.clone();
     
-    STORAGE.with(|storage| {
-        let storage = storage.borrow_mut();
-        
-        // First, check if the task exists and get its reward points
-        // We need to do this before borrowing user_tasks to avoid borrowing conflicts
-        
-        // Check if the task has an expiration time and if it has expired
-        // This check needs to happen for ALL tasks, including custom tasks
-        let task_opt = storage.tasks.get(&request.task_id);
-        if let Some(task) = task_opt {
-            if let Some(expiry) = task.expiration_time {
-                if expiry < time() {
-                    return Err(SquareError::InvalidOperation(format!("Task has expired: {}", request.task_id)));
+    // Check if the task has an expiration time and if it has expired in main storage
+    // This check needs to happen for ALL tasks, including custom tasks
+    // Check if task has already been completed today for daily tasks
+    let already_completed = STORAGE.with(|storage| {
+        let store = storage.borrow();
+        if let Some(user_tasks) = store.user_tasks.get(&caller) {
+            if request.task_id.starts_with("daily_") {
+                // For daily tasks, check if completed today
+                let today_start = (now / SECONDS_IN_DAY) * SECONDS_IN_DAY;
+                if let Some(completion_time) = user_tasks.completed_tasks.get(&request.task_id) {
+                    return *completion_time >= today_start;
                 }
+            } else {
+                // For other tasks, check if ever completed
+                return user_tasks.completed_tasks.contains_key(&request.task_id);
+            }
+        }
+        false
+    });
+
+    if already_completed {
+        return Err(SquareError::InvalidOperation(
+            format!("Task {} has already been completed today", request.task_id)
+        ));
+    }
+
+    // Check task expiration
+    let task_expired = STORAGE.with(|storage| {
+        let store = storage.borrow();
+        if let Some(tasks) = &store.tasks {
+            if let Some(task) = tasks.get(&request.task_id) {
+                if let Some(expiry) = task.expiration_time {
+                    // 确保时间单位一致，统一使用毫秒
+                    let expiry_ms = expiry / 1_000_000;
+                    if expiry_ms < now {
+                        ic_cdk::println!("Task {} has expired: expiry={}, now={}", request.task_id, expiry_ms, now);
+                        return true;
+                    }
+                }
+                return false;
             }
         }
         
-        // Now get the task details
-        let (task_reward, task_type, _expiration_time) = match task_opt {
-            Some(task) => {
-                (task.points, task.task_type.clone(), task.expiration_time)
-            },
-            None => {
+        // If task not found in store, check if it's a default task
+        match request.task_id.as_str() {
+            "daily_post" | "social_engagement" => false,
+            _ => {
+                ic_cdk::println!("Task {} not found and not a default task", request.task_id);
+                true // Unknown task is considered expired
+            }
+        }
+    });
+
+    if task_expired {
+        return Err(SquareError::InvalidOperation(
+            format!("Task {} has expired or does not exist", request.task_id)
+        ));
+    }
+        
+    // Now get the task details from main storage
+    let (task_reward, task_type, _expiration_time) = STORAGE.with(|storage| {
+        let store = storage.borrow();
+        if let Some(tasks) = &store.tasks {
+            if let Some(task) = tasks.get(&request.task_id) {
+                Ok((task.points, task.task_type.clone(), task.expiration_time))
+            } else {
                 // Check for hardcoded tasks from get_available_tasks
                 match request.task_id.as_str() {
-                    "daily_post" => (50, TaskType::Daily, None),
-                    "social_engagement" => (100, TaskType::Daily, None),
-                    _ => return Err(SquareError::NotFound(format!("Task with ID {} not found", request.task_id)))
+                    "daily_post" => Ok((50, TaskType::Daily, None)),
+                    "social_engagement" => Ok((100, TaskType::Daily, None)),
+                    _ => Err(SquareError::NotFound(format!("Task with ID {} not found", request.task_id)))
                 }
             }
-        };
-        
-        // Get user tasks
-        let user_tasks_key = caller.to_string();
-        let user_tasks_exists = SHARDED_USER_TASKS.with(|tasks| {
-            tasks.borrow().contains_key(&user_tasks_key)
-        });
-        
-        if !user_tasks_exists {
-            // Initialize user tasks in sharded storage
-            SHARDED_USER_TASKS.with(|tasks| {
-                let mut tasks = tasks.borrow_mut();
-                tasks.insert(user_tasks_key.clone(), UserTasks {
-                    principal: caller,
-                    completed_tasks: HashMap::new(),
-                    daily_tasks_reset: time() / 1_000_000,
-                    last_check_in: None,
-                    last_updated: time(),
-                });
-            });
+        } else {
+            // Check for hardcoded tasks from get_available_tasks
+            match request.task_id.as_str() {
+                "daily_post" => Ok((50, TaskType::Daily, None)),
+                "social_engagement" => Ok((100, TaskType::Daily, None)),
+                _ => Err(SquareError::NotFound(format!("Task with ID {} not found", request.task_id)))
+            }
         }
-        
-        // We already have the task_type from earlier, no need to fetch it again
-        
-        // Check if task already completed
-        let already_completed = SHARDED_USER_TASKS.with(|tasks| {
-            let mut tasks = tasks.borrow_mut();
-            if let Some(user_tasks) = tasks.get(&user_tasks_key) {
+    })?;
+    
+    // Get user tasks
+    let user_tasks_exists = STORAGE.with(|storage| {
+        let store = storage.borrow();
+        store.user_tasks.contains_key(&caller)
+    });
+    
+    if !user_tasks_exists {
+        // Initialize user tasks in main storage
+        STORAGE.with(|storage| {
+            let mut store = storage.borrow_mut();
+            // Ensure user_tasks exists
+            if store.user_tasks.is_empty() {
+                store.user_tasks = HashMap::new();
+            }
+            
+            // Add user task
+            store.user_tasks.insert(caller, UserTasks {
+                principal: caller,
+                completed_tasks: HashMap::new(),
+                daily_tasks_reset: now,
+                last_check_in: None,
+                last_updated: now,
+            });
+        });
+    }
+    
+    // We already have the task_type from earlier, no need to fetch it again
+    
+    // Check if task already completed
+    let already_completed = STORAGE.with(|storage| {
+        let store = storage.borrow();
+        // Check user tasks
+        if let Some(user_tasks) = store.user_tasks.get(&caller) {
                 match task_type {
                     TaskType::Daily => {
                         // For daily tasks, check if THIS SPECIFIC daily task was completed today
@@ -232,86 +309,118 @@ pub fn complete_task(request: CompleteTaskRequest, caller: Principal) -> SquareR
             } else {
                 false
             }
-        });
+    });
+    
+    if already_completed {
+        return Err(SquareError::InvalidOperation(format!("Task already completed: {}", request.task_id)));
+    }
+    
+    // Validate the proof based on task type
+    if let Some(proof_str) = &request.proof {
+        // For tasks that require proof, validate it
+        match request.task_id.as_str() {
+            "daily_post" => {
+                if proof_str.is_empty() {
+                    return Err(SquareError::ValidationFailed("Invalid proof for daily_post task".to_string()));
+                }
+            },
+            _ => {
+                // For other tasks, just ensure proof is not empty when provided
+                if proof_str.is_empty() {
+                    return Err(SquareError::ValidationFailed(format!("Invalid proof for task {}", request.task_id)));
+                }
+            }
+        }
+    } else {
+        // Some tasks might not require proof
+        match request.task_id.as_str() {
+            "social_engagement" => {}, // No proof needed
+            "daily_checkin" => {}, // No proof needed
+            _ => {
+                // For other tasks, proof is required
+                return Err(SquareError::ValidationFailed(format!("Proof is required for task {}", request.task_id)));
+            }
+        }
+    }
+    
+    // Mark task as completed
+    STORAGE.with(|storage| {
+        let mut store = storage.borrow_mut();
         
-        if already_completed {
-            return Err(SquareError::InvalidOperation(format!("Task already completed: {}", request.task_id)));
+        // Ensure user_tasks exists
+        if store.user_tasks.is_empty() {
+            store.user_tasks = HashMap::new();
         }
         
-        // We've already validated the proof in the previous step
-        // No need for additional validation here
-        // This allows for more flexibility in task types and proof formats
-        
-        // Mark task as completed
-        SHARDED_USER_TASKS.with(|tasks| {
-            let mut tasks = tasks.borrow_mut();
-            let user_tasks = match tasks.get(&user_tasks_key) {
+        // Get user tasks
+        let user_tasks = match store.user_tasks.get(&caller) {
                 Some(tasks) => tasks.clone(),
                 None => UserTasks {
                     principal: caller,
                     completed_tasks: HashMap::new(),
-                    daily_tasks_reset: time() / 1_000_000,
+                    daily_tasks_reset: now,
                     last_check_in: None,
-                    last_updated: time(),
+                    last_updated: now,
                 }
             };
             
             let mut updated_tasks = user_tasks.clone();
-            updated_tasks.completed_tasks.insert(request.task_id.clone(), time());
-            updated_tasks.last_updated = time();
+            updated_tasks.completed_tasks.insert(request.task_id.clone(), now);
+            updated_tasks.last_updated = now;
             
-            tasks.insert(user_tasks_key.clone(), updated_tasks);
+            store.user_tasks.insert(caller, updated_tasks);
+    });
+    
+    // Award points
+    let points = STORAGE.with(|storage| {
+        let mut store = storage.borrow_mut();
+        
+        // Ensure user_rewards exists
+        if store.user_rewards.is_empty() {
+            store.user_rewards = HashMap::new();
+        }
+        
+        // Get user rewards
+        let user_rewards = match store.user_rewards.get(&caller) {
+            Some(rewards) => rewards.clone(),
+            None => UserRewards {
+                principal: caller,
+                points: 0,
+                points_history: Vec::new(),
+                last_claim_date: None,
+                // consecutive_daily_logins field has been moved to daily_checkin_task canister
+                transactions: Vec::new(),
+                last_updated: now,
+            }
+        };
+        
+        let mut updated_rewards = user_rewards.clone();
+        
+        // Add points
+        updated_rewards.points += task_reward;
+        
+        // Record transaction
+        updated_rewards.points_history.push(PointsTransaction {
+            amount: task_reward as i64,
+            reason: format!("Completed task: {}", request.task_id),
+            timestamp: now,
+            reference_id: Some(request.task_id.clone()),
+            points: task_reward,
         });
         
-        // Award points
-        let user_rewards_key = caller.to_string();
-        let points = SHARDED_USER_REWARDS.with(|rewards| {
-            let mut rewards = rewards.borrow_mut();
-            let user_rewards = match rewards.get(&user_rewards_key) {
-                Some(rewards) => rewards.clone(),
-                None => UserRewards {
-                    principal: caller,
-                    points: 0,
-                    points_history: Vec::new(),
-                    last_claim_date: None,
-                    // consecutive_daily_logins field has been moved to daily_checkin_task canister
-
-                    transactions: Vec::new(),
-                    last_updated: time(),
-                }
-            };
-            
-            let mut updated_rewards = user_rewards.clone();
-            
-            // Add points
-            updated_rewards.points += task_reward;
-            
-
-            
-            // Record transaction
-            updated_rewards.points_history.push(PointsTransaction {
-                amount: task_reward as i64,
-                reason: format!("Completed task: {}", request.task_id),
-                timestamp: time() / 1_000_000,
-                reference_id: Some(request.task_id.clone()),
-                points: task_reward,
-            });
-            
-            updated_rewards.last_updated = time();
-            
-            rewards.insert(user_rewards_key.clone(), updated_rewards.clone());
-            
-            updated_rewards.points
-        });
+        updated_rewards.last_updated = now;
         
-        // Return the response
-        Ok(TaskCompletionResponse {
-            success: true,
-            points_earned: task_reward,
-            total_points: points,
-
-            message: format!("You earned {} points for completing {}", task_reward, request.task_id),
-        })
+        // Save updated rewards and return points
+        store.user_rewards.insert(caller, updated_rewards.clone());
+        updated_rewards.points
+    });
+        
+    // Return the response
+    Ok(TaskCompletionResponse {
+        success: true,
+        points_earned: task_reward,
+        total_points: points,
+        message: format!("You earned {} points for completing {}", task_reward, request.task_id),
     })
 }
 
@@ -319,23 +428,23 @@ pub fn complete_task(request: CompleteTaskRequest, caller: Principal) -> SquareR
 pub fn get_user_rewards(principal: Principal) -> SquareResult<UserRewardsResponse> {
     const MODULE: &str = "services::reward";
     const FUNCTION: &str = "get_user_rewards";
-    
+    let now = time() / 1_000_000;
     // Create a new UserRewardsResponse
     let mut response = UserRewardsResponse::new();
     
-    // Get user rewards from the main canister
-    let user_rewards = SHARDED_USER_REWARDS.with(|rewards| {
-        let mut rewards = rewards.borrow_mut();
-        rewards.get(&principal.to_string()).map(|r| r.clone())
+    // Get user rewards from the main storage
+    let user_rewards = STORAGE.with(|storage| {
+        let store = storage.borrow();
+        store.user_rewards.get(&principal).cloned()
     });
     
     let user_rewards = match user_rewards {
         Some(rewards) => rewards.clone(),
         None => {
             // If user rewards record doesn't exist, check user tasks record
-            let has_completed_tasks = SHARDED_USER_TASKS.with(|tasks| {
-                let mut tasks = tasks.borrow_mut();
-                let user_tasks_opt = tasks.get(&principal.to_string()).map(|t| t.clone());
+            let has_completed_tasks = STORAGE.with(|storage| {
+                let store = storage.borrow();
+                let user_tasks_opt = store.user_tasks.get(&principal).cloned();
                 if let Some(user_tasks) = user_tasks_opt {
                     // If user has completed tasks but rewards record doesn't exist, return empty rewards record
                     if !user_tasks.completed_tasks.is_empty() {
@@ -367,25 +476,25 @@ pub fn get_user_rewards(principal: Principal) -> SquareResult<UserRewardsRespons
                 last_claim_date: None,
                 // consecutive_daily_logins field has been moved to daily_checkin_task canister
                 transactions: Vec::new(),
-                last_updated: time(),
+                last_updated: now,
             };
             
-            // Store the new rewards record
-            SHARDED_USER_REWARDS.with(|rewards| {
-                let mut rewards = rewards.borrow_mut();
-                rewards.insert(principal.to_string(), new_user_rewards.clone());
+            // Store the new rewards record in main storage
+            STORAGE.with(|storage| {
+                let mut store = storage.borrow_mut();
+                store.user_rewards.insert(principal, new_user_rewards.clone());
             });
             
-            // Also create an empty user tasks record if it doesn't exist
-            SHARDED_USER_TASKS.with(|tasks| {
-                let mut tasks = tasks.borrow_mut();
-                if !tasks.contains_key(&principal.to_string()) {
-                    tasks.insert(principal.to_string(), UserTasks {
+            // Also create an empty user tasks record if it doesn't exist in main storage
+            STORAGE.with(|storage| {
+                let mut store = storage.borrow_mut();
+                if !store.user_tasks.contains_key(&principal) {
+                    store.user_tasks.insert(principal, UserTasks {
                         principal: principal.clone(),
                         completed_tasks: HashMap::new(),
-                        daily_tasks_reset: time() / 1_000_000,
+                        daily_tasks_reset: now,
                         last_check_in: None,
-                        last_updated: time(),
+                        last_updated: now,
                     });
                 }
             });
@@ -402,13 +511,13 @@ pub fn get_user_rewards(principal: Principal) -> SquareResult<UserRewardsRespons
         
 
     
-    // Get user's completed tasks
-    let completed_tasks = SHARDED_USER_TASKS.with(|tasks| {
-        let mut tasks = tasks.borrow_mut();
-        let user_tasks_opt = tasks.get(&principal.to_string()).map(|tasks| tasks.clone());
+    // Get user's completed tasks from main storage
+    let completed_tasks = STORAGE.with(|storage| {
+        let store = storage.borrow();
+        let user_tasks_opt = store.user_tasks.get(&principal).cloned();
         match user_tasks_opt {
-        Some(user_tasks) => user_tasks.completed_tasks.keys().cloned().collect::<Vec<String>>(),
-        None => Vec::new(),
+            Some(user_tasks) => user_tasks.completed_tasks.keys().cloned().collect::<Vec<String>>(),
+            None => Vec::new(),
         }
     });
     
@@ -469,105 +578,106 @@ pub fn get_available_tasks(caller: Principal) -> SquareResult<Vec<TaskResponse>>
     const MODULE: &str = "services::reward";
     const FUNCTION: &str = "get_available_tasks";
     
-    STORAGE.with(|storage| {
-        let storage = storage.borrow();
+    // Get user tasks from main storage
+    let user_tasks = STORAGE.with(|storage| {
+        let store = storage.borrow();
+        store.user_tasks.get(&caller).cloned()
+    });
+    
+    let mut tasks = Vec::new();
+    let now = time() / 1_000_000;
+    
+    // Get all tasks from main storage
+    let task_definitions = STORAGE.with(|storage| {
+        let store = storage.borrow();
+        store.tasks.clone().unwrap_or_default()
+    });
+    
+    // Iterate through all task definitions
+    for (task_id, task_def) in task_definitions {
+        // Check if task is active
+        if !task_def.is_active {
+            continue;
+        }
         
-        // Get user tasks
-        let user_tasks = storage.user_tasks.get(&caller);
-        
-        // Get all task definitions from storage
-        let mut tasks = Vec::new();
-        let now = time() / 1_000_000;
-        
-        // 移除日志调用以节省 cycles
-        
-        // Iterate through all task definitions
-        for (task_id, task_def) in &storage.tasks {
-            // Check if task is active
-            if !task_def.is_active {
+        // Check if task has expired
+        if let Some(expiration) = task_def.expiration_time {
+            if now > expiration {
                 continue;
             }
-            
-            // Check if task has expired
-            if let Some(expiration) = task_def.expiration_time {
-                if now > expiration {
-                    continue;
-                }
-            }
-            
-            // Check if task is already completed (for daily tasks, check if completed today)
-            let is_completed = if let Some(ut) = user_tasks {
-                if task_def.task_type == TaskType::Daily {
-                    // For daily tasks, check if completed today
-                    let today_start = now - (now % SECONDS_IN_DAY);
-                    ut.completed_tasks.get(task_id)
-                        .map(|completion_time| *completion_time >= today_start)
-                        .unwrap_or(false)
-                } else if task_def.task_type == TaskType::Weekly {
-                    // For weekly tasks, check if completed this week
-                    let week_start = now - (now % (SECONDS_IN_DAY * 7));
-                    ut.completed_tasks.get(task_id)
-                        .map(|completion_time| *completion_time >= week_start)
-                        .unwrap_or(false)
-                } else if task_def.task_type == TaskType::Monthly {
-                    // For monthly tasks, check if completed this month (approximate)
-                    let month_start = now - (now % (SECONDS_IN_DAY * 30));
-                    ut.completed_tasks.get(task_id)
-                        .map(|completion_time| *completion_time >= month_start)
-                        .unwrap_or(false)
-                } else {
-                    // For one-time tasks, check if ever completed
-                    ut.completed_tasks.contains_key(task_id)
-                }
+        }
+        
+        // Check if task is already completed (for daily tasks, check if completed today)
+        let is_completed = if let Some(ut) = &user_tasks {
+            if task_def.task_type == TaskType::Daily {
+                // For daily tasks, check if completed today
+                let today_start = now - (now % SECONDS_IN_DAY);
+                ut.completed_tasks.get(&task_id)
+                    .map(|completion_time| *completion_time >= today_start)
+                    .unwrap_or(false)
+            } else if task_def.task_type == TaskType::Weekly {
+                // For weekly tasks, check if completed this week
+                let week_start = now - (now % (SECONDS_IN_DAY * 7));
+                ut.completed_tasks.get(&task_id)
+                    .map(|completion_time| *completion_time >= week_start)
+                    .unwrap_or(false)
+            } else if task_def.task_type == TaskType::Monthly {
+                // For monthly tasks, check if completed this month (approximate)
+                let month_start = now - (now % (SECONDS_IN_DAY * 30));
+                ut.completed_tasks.get(&task_id)
+                    .map(|completion_time| *completion_time >= month_start)
+                    .unwrap_or(false)
             } else {
-                false
-            };
-            
-            // Create task response
-            tasks.push(TaskResponse {
-                id: task_id.clone(),
-                title: task_def.title.clone(),
-                description: task_def.description.clone(),
-                points: task_def.points,
-                task_type: task_def.task_type.clone(),
-                is_completed,
-                completion_criteria: task_def.completion_criteria.clone(),
-                expiration_time: task_def.expiration_time,
-                created_at: task_def.created_at,
-            });
-        }
+                // For one-time tasks, check if ever completed
+                ut.completed_tasks.contains_key(&task_id)
+            }
+        } else {
+            false
+        };
         
-        // If no tasks found, add default tasks
-        if tasks.is_empty() {
-            // Initialize tasks if they don't exist yet
-            init_default_tasks_all_enabled();
-            
-            // Try again with default tasks
-            return get_available_tasks(caller);
-        }
+        // Create task response
+        tasks.push(TaskResponse {
+            id: task_id.clone(),
+            title: task_def.title.clone(),
+            description: task_def.description.clone(),
+            points: task_def.points,
+            task_type: task_def.task_type.clone(),
+            is_completed,
+            completion_criteria: task_def.completion_criteria.clone(),
+            expiration_time: task_def.expiration_time,
+            created_at: task_def.created_at,
+        });
+    }
+    
+    // If no tasks found, add default tasks
+    if tasks.is_empty() {
+        // Initialize tasks if they don't exist yet
+        init_default_tasks_all_enabled();
         
-        Ok(tasks)
-    })
+        // Try again with default tasks
+        return get_available_tasks(caller);
+    }
+    
+    Ok(tasks)
 }
 
 // Admin functions
 pub fn award_points(request: AwardPointsRequest) -> SquareResult<()> {
     // Check if caller is admin or manager
     is_manager_or_admin()?;
-    
-    let user_rewards_key = request.principal.to_string();
-    let _points = SHARDED_USER_REWARDS.with(|rewards| {
-        let mut rewards = rewards.borrow_mut();
-        let user_rewards = match rewards.get(&user_rewards_key) {
+    let now = time() / 1_000_000;
+    let _points = STORAGE.with(|storage| {
+        let mut store = storage.borrow_mut();
+        let user_rewards = match store.user_rewards.get(&request.principal) {
             Some(rewards) => rewards.clone(),
             None => UserRewards {
-            principal: request.principal,
-            points: 0,
-            points_history: Vec::new(),
-            last_claim_date: None,
+                principal: request.principal,
+                points: 0,
+                points_history: Vec::new(),
+                last_claim_date: None,
             // consecutive_daily_logins field has been moved to daily_checkin_task canister
             transactions: Vec::new(),
-            last_updated: time(),
+            last_updated: now,
         }
         };
         
@@ -582,14 +692,14 @@ pub fn award_points(request: AwardPointsRequest) -> SquareResult<()> {
         updated_rewards.points_history.push(PointsTransaction {
             amount: request.points as i64,
             reason: request.reason.clone(),
-            timestamp: time() / 1_000_000,
+            timestamp: now,
             reference_id: request.reference_id.clone(),
             points: request.points,
         });
         
-        updated_rewards.last_updated = time();
+        updated_rewards.last_updated = now;
         
-        rewards.insert(user_rewards_key.clone(), updated_rewards.clone());
+        store.user_rewards.insert(request.principal, updated_rewards.clone());
         
         updated_rewards.points
     });
@@ -602,7 +712,7 @@ pub fn create_task(request: CreateTaskRequest) -> SquareResult<String> {
     const MODULE: &str = "services::reward";
     const FUNCTION: &str = "create_task";
     
-    
+    let now = time() / 1_000_000;
     // Check if caller is admin or manager
     is_manager_or_admin().map_err(|e| {
         e
@@ -611,10 +721,8 @@ pub fn create_task(request: CreateTaskRequest) -> SquareResult<String> {
     let task_id = if !request.id.is_empty() {
         request.id.clone()
     } else {
-        format!("task_{}", time() / 1_000_000)
+        format!("task_{}", now)
     };
-    
-    let now = time() / 1_000_000;
     
     // Create task definition
     // Use points_reward field for task points
@@ -635,23 +743,32 @@ pub fn create_task(request: CreateTaskRequest) -> SquareResult<String> {
         canister_id: request.canister_id,
     };
     
-    // Store the task
+    // Store the task in main storage
     STORAGE.with(|storage| {
-        let mut storage = storage.borrow_mut();
+        let mut store = storage.borrow_mut();
         
-        // Check if task ID already exists
-        if storage.tasks.contains_key(&task_id) {
-            return log_and_return(already_exists_error(
-                "Task", 
-                &task_id, 
-                MODULE, 
-                FUNCTION
-            ).with_details(format!("Task with ID {} already exists", task_id)));
+        // Initialize tasks if it doesn't exist
+        if store.tasks.is_none() {
+            store.tasks = Some(HashMap::new());
         }
         
-        // Add the task
-        storage.tasks.insert(task_id.clone(), task);
-        Ok(task_id)
+        if let Some(tasks) = &mut store.tasks {
+            // Check if task ID already exists
+            if tasks.contains_key(&task_id) {
+                return log_and_return(already_exists_error(
+                    "Task", 
+                    &task_id, 
+                    MODULE, 
+                    FUNCTION
+                ).with_details(format!("Task with ID {} already exists", task_id)));
+            }
+            
+            // Add the task
+            tasks.insert(task_id.clone(), task);
+            Ok(task_id)
+        } else {
+            log_and_return(SquareError::SystemError("Failed to initialize tasks".to_string()))
+        }
     })
 }
 
@@ -659,38 +776,46 @@ pub fn update_task(request: UpdateTaskRequest) -> SquareResult<()> {
     const MODULE: &str = "services::reward";
     const FUNCTION: &str = "update_task";
     
-    
+    let now = time() / 1_000_000;
     // Check if caller is admin or manager
     is_manager_or_admin().map_err(|e| {
         e
     })?;
     
+    // Update task in main storage
     STORAGE.with(|storage| {
-        let mut storage = storage.borrow_mut();
+        let mut store = storage.borrow_mut();
         
-        // Check if task exists
-        let task = match storage.tasks.get_mut(&request.id) {
-            Some(task) => task,
-            None => return log_and_return(not_found_error(
-                "Task", 
-                &request.id, 
-                MODULE, 
-                FUNCTION
-            ).with_details(format!("Task with ID {} not found", request.id))),
-        };
-        
-        // Update task fields
-        task.title = request.title;
-        task.description = request.description;
-        // Use points_reward field for task points
-        task.points = request.points_reward;
-        task.task_type = request.task_type;
-        task.completion_criteria = request.completion_criteria;
-        task.expiration_time = request.end_time;
-        task.updated_at = time() / 1_000_000;
-        task.requirements = request.requirements;
-        
-        Ok(())
+        if let Some(tasks) = &mut store.tasks {
+            // Check if task exists
+            let mut task = match tasks.get(&request.id) {
+                Some(task) => task.clone(),
+                None => return log_and_return(not_found_error(
+                    "Task", 
+                    &request.id, 
+                    MODULE, 
+                    FUNCTION
+                ).with_details(format!("Task with ID {} not found", request.id))),
+            };
+            
+            // Update task fields
+            task.title = request.title;
+            task.description = request.description;
+            // Use points_reward field for task points
+            task.points = request.points_reward;
+            task.task_type = request.task_type;
+            task.completion_criteria = request.completion_criteria;
+            task.expiration_time = request.end_time;
+            task.updated_at = now;
+            task.requirements = request.requirements;
+            
+            // Save updated task
+            tasks.insert(request.id.clone(), task);
+            
+            Ok(())
+        } else {
+            log_and_return(SquareError::SystemError("Tasks storage not initialized".to_string()))
+        }
     })
 }
 
@@ -704,21 +829,26 @@ pub fn delete_task(task_id: String) -> SquareResult<()> {
         e
     })?;
 
+    // Delete task from main storage
     STORAGE.with(|storage| {
-        let mut storage = storage.borrow_mut();
+        let mut store = storage.borrow_mut();
+        
+        if let Some(tasks) = &mut store.tasks {
+            // Check if task exists
+            if !tasks.contains_key(&task_id) {
+                return log_and_return(not_found_error(
+                    "Task",
+                    &task_id,
+                    MODULE,
+                    FUNCTION
+                ).with_details(format!("Task with ID {} not found", task_id)));
+            }
 
-        // Check if task exists
-        if !storage.tasks.contains_key(&task_id) {
-            return log_and_return(not_found_error(
-                "Task",
-                &task_id,
-                MODULE,
-                FUNCTION
-            ).with_details(format!("Task with ID {} not found", task_id)));
+            // Remove the task
+            tasks.remove(&task_id);
+            Ok(())
+        } else {
+            log_and_return(SquareError::SystemError("Tasks storage not initialized".to_string()))
         }
-
-        // Remove the task
-        storage.tasks.remove(&task_id);
-        Ok(())
     })
 }

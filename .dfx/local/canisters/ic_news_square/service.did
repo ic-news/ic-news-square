@@ -11,56 +11,69 @@ type ApiResponse = record {
   success : bool;
 };
 type ApiResponse_1 = record {
-  data : opt null;
+  data : opt bool;
   error : opt ApiError;
   success : bool;
 };
-type ApiResponse_2 = record {
-  data : opt vec text;
+type ApiResponse_10 = record {
+  data : opt HeartbeatIntervalResponse;
   error : opt ApiError;
   success : bool;
 };
-type ApiResponse_3 = record {
-  data : opt vec record { ErrorCode; nat64; nat64; nat64 };
-  error : opt ApiError;
-  success : bool;
-};
-type ApiResponse_4 = record {
-  data : opt vec UserSocialResponse;
-  error : opt ApiError;
-  success : bool;
-};
-type ApiResponse_5 = record {
+type ApiResponse_11 = record {
   data : opt vec record { ErrorCode; nat64 };
   error : opt ApiError;
   success : bool;
 };
-type ApiResponse_6 = record {
+type ApiResponse_12 = record {
   data : opt UserLeaderboardResponse;
   error : opt ApiError;
   success : bool;
 };
-type ApiResponse_7 = record {
+type ApiResponse_13 = record {
   data : opt UserProfileResponse;
   error : opt ApiError;
   success : bool;
 };
-type ArticleResponse = record {
-  id : text;
-  status : ContentStatus;
-  updated_at : nat64;
-  content : text;
-  author_info : UserSocialResponse;
-  hashtags : vec text;
-  shares_count : nat64;
-  media_urls : vec text;
-  news_reference : opt NewsReferenceRequest;
-  created_at : nat64;
-  author : principal;
-  token_mentions : vec text;
-  comments_count : nat64;
-  visibility : ContentVisibility;
-  likes_count : nat64;
+type ApiResponse_2 = record {
+  data : opt text;
+  error : opt ApiError;
+  success : bool;
+};
+type ApiResponse_3 = record {
+  data : opt vec record { text; text };
+  error : opt ApiError;
+  success : bool;
+};
+type ApiResponse_4 = record {
+  data : opt null;
+  error : opt ApiError;
+  success : bool;
+};
+type ApiResponse_5 = record {
+  data : opt CyclesNotificationsResponse;
+  error : opt ApiError;
+  success : bool;
+};
+type ApiResponse_6 = record {
+  data : opt CyclesThresholdConfig;
+  error : opt ApiError;
+  success : bool;
+};
+type ApiResponse_7 = record {
+  data : opt vec text;
+  error : opt ApiError;
+  success : bool;
+};
+type ApiResponse_8 = record {
+  data : opt vec record { ErrorCode; nat64; nat64; nat64 };
+  error : opt ApiError;
+  success : bool;
+};
+type ApiResponse_9 = record {
+  data : opt vec UserSocialResponse;
+  error : opt ApiError;
+  success : bool;
 };
 type AwardPointsRequest = record {
   "principal" : principal;
@@ -75,13 +88,12 @@ type CommentResponse = record {
   content : text;
   child_comments : vec CommentResponse;
   author_info : UserSocialResponse;
-  shares_count : nat64;
   created_at : nat64;
   author : principal;
   parent_id : text;
   is_liked : bool;
   comments_count : nat64;
-  visibility : ContentVisibility;
+  visibility : ContentVisibility_1;
   likes_count : nat64;
   parent_type : ParentType;
 };
@@ -94,7 +106,6 @@ type CommentsResponse = record {
 type CompleteTaskRequest = record { task_id : text; proof : opt text };
 type ContentCreationRequirement = record {
   comment_count : opt nat64;
-  article_count : opt nat64;
   post_count : opt nat64;
   required_hashtags : opt vec text;
 };
@@ -113,16 +124,7 @@ type ContentModerationRequest = record {
 };
 type ContentStatus = variant { UnderReview; Active; Hidden; Removed; Deleted };
 type ContentVisibility = variant { Private; FollowersOnly; Public };
-type CreateArticleRequest = record {
-  id : opt text;
-  is_nsfw : opt bool;
-  content : text;
-  hashtags : vec text;
-  media_urls : vec text;
-  news_reference : opt NewsReferenceRequest;
-  token_mentions : opt vec text;
-  visibility : opt ContentVisibility;
-};
+type ContentVisibility_1 = variant { Private; FollowersOnly; Public };
 type CreateCommentRequest = record {
   id : opt text;
   content : text;
@@ -136,7 +138,7 @@ type CreatePostRequest = record {
   hashtags : vec text;
   media_urls : vec text;
   tags : opt vec text;
-  news_reference : opt NewsReferenceRequest;
+  news_reference : opt NewsReference;
   token_mentions : opt vec text;
   mentions : opt vec text;
   visibility : opt ContentVisibility;
@@ -243,7 +245,7 @@ type ErrorContext = record {
 };
 type ErrorSeverity = variant { Error; Info; Critical; Warning };
 type FeedResponse = record {
-  articles : vec ArticleResponse;
+  total : nat64;
   comments : vec CommentResponse;
   posts : vec PostResponse;
   next_offset : nat64;
@@ -254,6 +256,7 @@ type GetTrendingTopicsRequest = record {
   limit : opt nat32;
   time_range_hours : opt nat32;
 };
+type HeartbeatIntervalResponse = record { interval_hours : nat64 };
 type HotTagInfo = record { name : text; count : nat64; tag_type : TagType };
 type HotTagsResponse = record { updated_at : nat64; tags : vec HotTagInfo };
 type InteractionPreferences = record {
@@ -272,26 +275,21 @@ type LikesResponse = record {
   content_type : ParentType;
   likes : vec UserLikeInfo;
 };
+type LogEntry = record { message : text; timestamp : nat64 };
 type LoginStreakRequirement = record { days_required : nat64 };
-type NewsReferenceRequest = record {
+type NewsReference = record {
   metadata : vec record { text; text };
   canister_id : principal;
 };
 type NotificationPreferences = record {
-  shares : bool;
   follows : bool;
   likes : bool;
   comments : bool;
   mentions : bool;
   system : bool;
 };
-type NotificationSettings = record {
-  email_address : opt text;
-  notification_frequency_hours : nat64;
-  email_enabled : bool;
-};
-type PaginationParams = record { offset : nat64; limit : nat64 };
-type ParentType = variant { Article; Post; Comment };
+type PaginationParams = record { offset : opt nat64; limit : opt nat64 };
+type ParentType = variant { Post; Comment };
 type PersonalizedRecommendationsRequest = record {
   diversity_factor : opt float64;
   recency_weight : opt float64;
@@ -309,15 +307,14 @@ type PostResponse = record {
   content : text;
   author_info : UserSocialResponse;
   hashtags : vec text;
-  shares_count : nat64;
   media_urls : vec text;
   tags : vec text;
-  news_reference : opt NewsReferenceRequest;
+  news_reference : opt NewsReference;
   created_at : nat64;
   author : principal;
   token_mentions : vec text;
   comments_count : nat64;
-  visibility : ContentVisibility;
+  visibility : ContentVisibility_1;
   likes_count : nat64;
 };
 type PostsResponse = record {
@@ -350,30 +347,23 @@ type ReportReason = variant {
 };
 type Result = variant { Ok; Err : SquareError };
 type Result_1 = variant { Ok; Err : text };
-type Result_10 = variant { Ok : CyclesConsumptionResponse; Err : SquareError };
-type Result_11 = variant {
-  Ok : CyclesNotificationsResponse;
-  Err : SquareError;
-};
-type Result_12 = variant { Ok : CyclesThresholdConfig; Err : SquareError };
-type Result_13 = variant { Ok : HotTagsResponse; Err : SquareError };
-type Result_14 = variant { Ok : LikesResponse; Err : SquareError };
-type Result_15 = variant { Ok : NotificationSettings; Err : SquareError };
-type Result_16 = variant { Ok : PostResponse; Err : SquareError };
-type Result_17 = variant { Ok : PostsResponse; Err : SquareError };
-type Result_18 = variant { Ok : SharesResponse; Err : SquareError };
-type Result_19 = variant { Ok : vec TrendingTopicResponse; Err : SquareError };
+type Result_10 = variant { Ok : HotTagsResponse; Err : SquareError };
+type Result_11 = variant { Ok : LikesResponse; Err : SquareError };
+type Result_12 = variant { Ok : bool; Err : SquareError };
+type Result_13 = variant { Ok : PostResponse; Err : SquareError };
+type Result_14 = variant { Ok : PostsResponse; Err : SquareError };
+type Result_15 = variant { Ok : vec TrendingTopicResponse; Err : SquareError };
+type Result_16 = variant { Ok : vec record { text; Value }; Err : SquareError };
+type Result_17 = variant { Ok : vec principal; Err : text };
+type Result_18 = variant { Ok : vec SearchResultResponse; Err : SquareError };
 type Result_2 = variant { Ok : TaskCompletionResponse; Err : SquareError };
-type Result_20 = variant { Ok : vec record { text; Value }; Err : SquareError };
-type Result_21 = variant { Ok : vec principal; Err : text };
-type Result_22 = variant { Ok : vec SearchResultResponse; Err : SquareError };
-type Result_3 = variant { Ok : ArticleResponse; Err : SquareError };
-type Result_4 = variant { Ok : CommentResponse; Err : SquareError };
-type Result_5 = variant { Ok : text; Err : SquareError };
-type Result_6 = variant { Ok : FeedResponse; Err : SquareError };
-type Result_7 = variant { Ok : vec TaskResponse; Err : SquareError };
-type Result_8 = variant { Ok : CommentsResponse; Err : SquareError };
-type Result_9 = variant { Ok : CyclesBalanceResponse; Err : SquareError };
+type Result_3 = variant { Ok : CommentResponse; Err : SquareError };
+type Result_4 = variant { Ok : text; Err : SquareError };
+type Result_5 = variant { Ok : FeedResponse; Err : SquareError };
+type Result_6 = variant { Ok : vec TaskResponse; Err : SquareError };
+type Result_7 = variant { Ok : CommentsResponse; Err : SquareError };
+type Result_8 = variant { Ok : CyclesBalanceResponse; Err : SquareError };
+type Result_9 = variant { Ok : CyclesConsumptionResponse; Err : SquareError };
 type SearchRequest = record {
   pagination : PaginationParams;
   "query" : text;
@@ -388,23 +378,11 @@ type SearchResultResponse = record {
   created_at : nat64;
   author : UserSocialResponse;
 };
-type SharesResponse = record {
-  content_id : text;
-  count : nat64;
-  content_type : ParentType;
-};
 type SocialInteractionRequirement = record {
-  share_count : opt nat64;
   like_count : opt nat64;
   follow_count : opt nat64;
 };
-type SortOption = variant {
-  MostShared;
-  MostCommented;
-  Trending;
-  MostLiked;
-  Latest;
-};
+type SortOption = variant { MostCommented; Trending; MostLiked; Latest };
 type SquareError = variant {
   Enhanced : SquareErrorEnhanced;
   ValidationFailed : text;
@@ -455,15 +433,6 @@ type TrendingTopicResponse = record {
   count : nat64;
   trend_direction : TrendDirection;
 };
-type UpdateArticleRequest = record {
-  id : text;
-  content : text;
-  hashtags : opt vec text;
-  media_urls : opt vec text;
-  news_reference : opt NewsReferenceRequest;
-  token_mentions : opt vec text;
-  visibility : opt ContentVisibility;
-};
 type UpdateCommentRequest = record { id : text; content : text };
 type UpdateCyclesThresholdRequest = record {
   critical_threshold : opt nat64;
@@ -476,9 +445,9 @@ type UpdatePostRequest = record {
   hashtags : opt vec text;
   media_urls : opt vec text;
   tags : opt vec text;
-  news_reference : opt NewsReferenceRequest;
+  news_reference : opt NewsReference;
   token_mentions : opt vec text;
-  visibility : opt ContentVisibility;
+  visibility : opt ContentVisibility_1;
 };
 type UpdateProfileRequest = record {
   bio : opt text;
@@ -492,14 +461,15 @@ type UpdateProfileRequest = record {
 type UserLeaderboardItem = record {
   "principal" : principal;
   username : text;
-  last_claim_date : opt nat64;
+  comment_count : nat64;
+  last_claim_date : nat64;
   consecutive_daily_logins : nat64;
+  like_count : nat64;
   rank : nat64;
-  article_count : nat64;
   post_count : nat64;
+  reputation : nat64;
   handle : text;
   followers_count : nat64;
-  points : nat64;
   avatar : text;
 };
 type UserLeaderboardResponse = record {
@@ -515,22 +485,26 @@ type UserLikeInfo = record {
 };
 type UserPrivacySettings = record {
   notification_preferences : NotificationPreferences;
-  content_visibility : ContentVisibility;
+  content_visibility : ContentVisibility_1;
   interaction_preferences : InteractionPreferences;
-  profile_visibility : ContentVisibility;
+  profile_visibility : ContentVisibility_1;
 };
 type UserProfileResponse = record {
   bio : text;
   is_following : bool;
   status : UserStatus;
   last_login : nat64;
+  updated_at : nat64;
   "principal" : principal;
   username : text;
+  interests : vec text;
   role : UserRole;
   following_count : nat64;
+  created_at : nat64;
   handle : text;
   registered_at : nat64;
   followers_count : nat64;
+  privacy_settings : opt UserPrivacySettings;
   social_links : vec record { text; text };
   avatar : text;
 };
@@ -540,6 +514,7 @@ type UserSocialResponse = record {
   is_following : bool;
   "principal" : principal;
   username : text;
+  interests : vec text;
   following_count : nat64;
   is_followed_by_caller : bool;
   handle : text;
@@ -563,62 +538,64 @@ service : {
   acknowledge_notification : (nat64) -> (Result);
   add_manager : (principal) -> (Result_1);
   award_points : (AwardPointsRequest) -> (Result);
+  clear_logs : () -> (bool);
   complete_task : (CompleteTaskRequest) -> (Result_2);
-  create_article : (CreateArticleRequest) -> (Result_3);
-  create_comment : (CreateCommentRequest) -> (Result_4);
+  create_comment : (CreateCommentRequest) -> (Result_3);
   create_post : (CreatePostRequest) -> (ApiResponse);
-  create_task : (CreateTaskRequest) -> (Result_5);
-  delete_article : (text) -> (Result);
+  create_task : (CreateTaskRequest) -> (Result_4);
+  debug_fix_user_data : (text) -> (ApiResponse_1);
+  debug_fix_user_profile : (text) -> (ApiResponse_2);
+  debug_list_all_users : () -> (ApiResponse_3) query;
   delete_comment : (text) -> (Result);
   delete_post : (text) -> (Result);
   delete_task : (text) -> (Result);
-  discover_content : (DiscoverContentRequest) -> (Result_6) query;
-  follow_user : (principal) -> (ApiResponse_1);
-  get_article : (text) -> (Result_3) query;
-  get_available_tasks : () -> (Result_7) query;
-  get_comment : (text) -> (Result_4) query;
-  get_comments : (text, text, PaginationParams) -> (Result_8) query;
-  get_cycles_balance : () -> (Result_9) query;
-  get_cycles_consumption_history : () -> (Result_10) query;
-  get_cycles_notifications : () -> (Result_11) query;
-  get_cycles_threshold : () -> (Result_12) query;
-  get_error_history : () -> (ApiResponse_2) query;
-  get_error_stats : () -> (ApiResponse_3) query;
-  get_followers : (opt principal) -> (ApiResponse_4) query;
-  get_following : (opt principal) -> (ApiResponse_4) query;
-  get_hot_tags : (GetHotTagsRequest) -> (Result_13) query;
-  get_likes : (text, ParentType) -> (Result_14) query;
-  get_most_common_errors : (nat64) -> (ApiResponse_5) query;
-  get_notification_settings : () -> (Result_15) query;
+  discover_content : (DiscoverContentRequest) -> (Result_5) query;
+  follow_user : (principal) -> (ApiResponse_4);
+  get_available_tasks : () -> (Result_6) query;
+  get_comment : (text) -> (Result_3) query;
+  get_comments : (text, text, PaginationParams) -> (Result_7) query;
+  get_cycles_balance : () -> (Result_8) query;
+  get_cycles_consumption_history : () -> (Result_9) query;
+  get_cycles_notifications : () -> (ApiResponse_5) query;
+  get_cycles_threshold : () -> (ApiResponse_6) query;
+  get_error_history : () -> (ApiResponse_7) query;
+  get_error_stats : () -> (ApiResponse_8) query;
+  get_followers : (opt text) -> (ApiResponse_9) query;
+  get_following : (opt text) -> (ApiResponse_9) query;
+  get_heartbeat_interval : () -> (ApiResponse_10) query;
+  get_hot_tags : (GetHotTagsRequest) -> (Result_10) query;
+  get_likes : (text, ParentType) -> (Result_11) query;
+  get_logs : () -> (vec LogEntry) query;
+  get_most_common_errors : (nat64) -> (ApiResponse_11) query;
+  get_notification_settings : () -> (Result_12) query;
   get_personalized_recommendations : (PersonalizedRecommendationsRequest) -> (
-      Result_6,
+      Result_5,
     ) query;
-  get_post : (text) -> (Result_16) query;
-  get_posts : (PaginationParams) -> (Result_17) query;
-  get_shares : (text, ParentType) -> (Result_18) query;
-  get_trending_topics : (GetTrendingTopicsRequest) -> (Result_19) query;
-  get_user_content : (opt principal, opt ParentType, PaginationParams) -> (
-      Result_6,
+  get_post : (text) -> (Result_13) query;
+  get_posts : (PaginationParams) -> (Result_14) query;
+  get_recent_logs : (nat64) -> (vec LogEntry) query;
+  get_trending_topics : (GetTrendingTopicsRequest) -> (Result_15) query;
+  get_user_content : (opt text, opt ParentType, PaginationParams) -> (
+      Result_5,
     ) query;
-  get_user_leaderboard : (PaginationParams) -> (ApiResponse_6) query;
-  get_user_profile : (opt principal) -> (ApiResponse_7) query;
-  get_user_rewards : () -> (Result_20) query;
+  get_user_leaderboard : (PaginationParams) -> (ApiResponse_12) query;
+  get_user_profile : (opt text) -> (ApiResponse_13) query;
+  get_user_rewards : () -> (Result_16) query;
   like_content : (LikeContentRequest) -> (Result);
-  list_managers : () -> (Result_21) query;
-  migrate_to_sharded_storage : () -> (Result_5);
+  list_managers : () -> (Result_17) query;
+  migrate_storage : () -> (ApiResponse_2);
   moderate_content : (ContentModerationRequest) -> (Result);
-  register_user : (RegisterUserRequest) -> (ApiResponse_1);
+  register_user : (RegisterUserRequest) -> (ApiResponse_4);
   remove_manager : (principal) -> (Result_1);
   report_content : (ReportContentRequest) -> (Result);
-  search_content : (SearchRequest) -> (Result_22) query;
-  share_content : (text, ParentType) -> (Result);
-  unfollow_user : (principal) -> (ApiResponse_1);
+  search_content : (SearchRequest) -> (Result_18) query;
+  unfollow_user : (principal) -> (ApiResponse_4);
   unlike_content : (LikeContentRequest) -> (Result);
-  update_article : (UpdateArticleRequest) -> (Result_3);
-  update_comment : (UpdateCommentRequest) -> (Result_4);
-  update_cycles_threshold : (UpdateCyclesThresholdRequest) -> (Result);
-  update_notification_settings : (opt bool, opt text, opt nat64) -> (Result);
+  update_comment : (UpdateCommentRequest) -> (Result_3);
+  update_cycles_threshold : (UpdateCyclesThresholdRequest) -> (ApiResponse_6);
+  update_heartbeat_interval : (HeartbeatIntervalResponse) -> (ApiResponse_10);
+  update_notification_settings : (opt bool) -> (Result);
   update_post : (UpdatePostRequest) -> (ApiResponse);
   update_task : (CreateTaskRequest) -> (Result);
-  update_user_profile : (UpdateProfileRequest) -> (ApiResponse_1);
+  update_user_profile : (UpdateProfileRequest) -> (ApiResponse_2);
 }

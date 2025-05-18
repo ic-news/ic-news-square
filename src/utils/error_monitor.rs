@@ -63,12 +63,13 @@ impl ErrorMonitor {
         Self {
             error_history: VecDeque::with_capacity(MAX_ERROR_HISTORY),
             error_stats: HashMap::new(),
-            last_cleanup: time(),
+            last_cleanup: time() / 1_000_000,
         }
     }
 
     /// Record an error
     fn record_error(&mut self, error: &SquareError) {
+        let now = time() / 1_000_000;
         // Create error record
         let record = match error {
             SquareError::Enhanced(enhanced) => ErrorRecord {
@@ -77,7 +78,7 @@ impl ErrorMonitor {
                 module: enhanced.context.module.clone(),
                 function: enhanced.context.function.clone(),
                 severity: enhanced.context.severity,
-                timestamp: time(),
+                timestamp: now,
             },
             _ => ErrorRecord {
                 code: error.code(),
@@ -85,7 +86,7 @@ impl ErrorMonitor {
                 module: "unknown".to_string(),
                 function: "unknown".to_string(),
                 severity: ErrorSeverity::Error,
-                timestamp: time(),
+                timestamp: now,
             },
         };
 
@@ -114,7 +115,7 @@ impl ErrorMonitor {
 
     /// Clean up old statistics
     fn cleanup_old_stats(&mut self) {
-        let now = time();
+        let now = time() / 1_000_000;
         if now - self.last_cleanup > ERROR_STATS_PERIOD {
             // Clean up statistics older than the statistics period
             let cutoff = now - ERROR_STATS_PERIOD;

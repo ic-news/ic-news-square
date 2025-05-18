@@ -10,6 +10,7 @@ pub struct FeedResponse {
     pub comments: Vec<CommentResponse>,
     pub has_more: bool,
     pub next_offset: usize,
+    pub total: u64,
 }
 
 #[derive(CandidType, Deserialize, Clone, Debug)]

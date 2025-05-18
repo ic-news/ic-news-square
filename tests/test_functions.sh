@@ -240,23 +240,88 @@ test_social_engagement() {
         record {
             id = opt \"$comment_id\";
             content = \"This is a test comment\";
-            content_id = \"$simple_post_id\";
-            content_type = variant { Post };
-            hashtags = vec { \"test\" };
-            mentions = opt vec {};
-            media_urls = vec {};
-            is_nsfw = opt false;
-            tags = opt vec {};
-            token_mentions = opt vec {};
-            parent_id = opt \"$simple_post_id\";
+            parent_id = \"$simple_post_id\";
+            parent_type = variant { Post };
         }
     )"
+    
+    # Alternative format is provided as a fallback in case the standard format doesn't work
+    # This might be useful during project refactoring when type definitions change
+    if [ "$1" == "alternative" ]; then
+        comment_request="(
+            record {
+                id = opt \"$comment_id\";
+                content = \"This is a test comment\";
+                parent_id = \"$simple_post_id\";
+                parent_type = \"Post\";
+            }
+        )"
+    fi
     
     local result=$($DFX create_comment "$comment_request")
     check_result "$result" "Commenting on post" true
     
     # Return comment ID for later use
     echo "$comment_id"
+}
+
+# Test nested comments (comments on comments)
+test_nested_comments() {
+    echo -e "\n${BLUE}Test: Nested comments${NC}"
+    
+    switch_identity $USER1
+    local principal=$(get_principal)
+    
+    # First create a post
+    local post_id="post_nested_test"
+    local create_post_request="(
+        record {
+            id = opt \"$post_id\";
+            content = \"Test post for nested comments\";
+            hashtags = vec { \"test\" };
+            mentions = opt vec {};
+            media_urls = vec {};
+            is_nsfw = opt false;
+            tags = opt vec {};
+            token_mentions = opt vec {};
+            visibility = opt variant { Public };
+        }
+    )"
+    
+    $DFX create_post "$create_post_request" > /dev/null
+    
+    # Create a parent comment
+    echo -e "${YELLOW}Creating parent comment on post: $post_id${NC}"
+    local parent_comment_id="comment_parent_123"
+    local parent_comment_request="(
+        record {
+            id = opt \"$parent_comment_id\";
+            content = \"This is a parent comment\";
+            parent_id = \"$post_id\";
+            parent_type = variant { Post };
+        }
+    )"
+    
+    local result=$($DFX create_comment "$parent_comment_request")
+    check_result "$result" "Creating parent comment" true
+    
+    # Create a child comment (comment on comment)
+    echo -e "${YELLOW}Creating child comment on comment: $parent_comment_id${NC}"
+    local child_comment_id="comment_child_123"
+    local child_comment_request="(
+        record {
+            id = opt \"$child_comment_id\";
+            content = \"This is a reply to another comment\";
+            parent_id = \"$parent_comment_id\";
+            parent_type = variant { Comment };
+        }
+    )"
+    
+    local result=$($DFX create_comment "$child_comment_request")
+    check_result "$result" "Creating child comment" true
+    
+    # Return child comment ID for later use
+    echo "$child_comment_id"
 }
 
 # Include basic test functions
@@ -278,19 +343,37 @@ run_all_tests() {
 # Run specific test
 run_specific_test() {
     local test_name=$1
+    local format=${2:-"standard"}
+    echo -e "\n${GREEN}Running test: $test_name (format: $format)${NC}"
     
-    # Check if it's a basic test
     case $test_name in
-        "register"|"user_profile"|"user_rewards"|"available_tasks"|"daily_post"|"social_engagement"|"task_repetition"|"admin_reward"|"points_accumulation"|"error_handling"|"multi_user")
-            run_specific_basic_test "$test_name"
+        register_user)
+            test_register_user
             ;;
-        "custom_task"|"expiration"|"chaining"|"reset"|"bulk"|"leaderboard"|"checkin")
-            run_specific_advanced_test "$test_name"
+        user_profile)
+            test_get_user_profile
+            ;;
+        user_rewards)
+            test_get_user_rewards
+            ;;
+        available_tasks)
+            test_get_available_tasks
+            ;;
+        create_post)
+            test_create_post
+            ;;
+        social_engagement)
+            if [ "$format" == "alternative" ]; then
+                test_social_engagement "alternative"
+            else
+                test_social_engagement
+            fi
+            ;;
+        nested_comments)
+            test_nested_comments
             ;;
         *)
             echo -e "${RED}Unknown test: $test_name${NC}"
-            echo -e "Available basic tests: register, user_profile, user_rewards, available_tasks, daily_post, social_engagement, task_repetition, admin_reward, points_accumulation, error_handling, multi_user"
-            echo -e "Available advanced tests: custom_task, expiration, chaining, reset, bulk, leaderboard, checkin"
             exit 1
             ;;
     esac

@@ -1,13 +1,26 @@
 use candid::{CandidType, Deserialize, Principal};
 use std::collections::HashMap;
 
-// Points transaction record
+// User rewards and tasks
 #[derive(CandidType, Deserialize, Clone)]
-pub struct PointsTransaction {
-    pub amount: i64,
-    pub reason: String,
-    pub timestamp: u64,
-    pub reference_id: Option<String>,
+pub struct UserRewards {
+    pub principal: Principal,
+    pub points: u64,
+    pub points_history: Vec<PointsTransaction>,
+    pub last_claim_date: Option<u64>,
+    // Note: consecutive_daily_logins field has been moved to daily_checkin_task canister
+    // and is now tracked as consecutive_days there
+    pub transactions: Vec<PointsTransaction>,
+    pub last_updated: u64,
+}
+
+#[derive(CandidType, Deserialize, Clone)]
+pub struct UserTasks {
+    pub principal: Principal,
+    pub completed_tasks: HashMap<String, u64>, // task_id -> completion timestamp
+    pub daily_tasks_reset: u64, // Timestamp when daily tasks were last reset
+    pub last_check_in: Option<u64>, // Last daily check-in timestamp
+    pub last_updated: u64,
 }
 
 // Task configuration
@@ -225,6 +238,15 @@ pub enum TaskType {
     Monthly,
     OneTime,
     Special
+}
+
+#[derive(CandidType, Deserialize, Clone)]
+pub struct PointsTransaction {
+    pub amount: i64,
+    pub reason: String,
+    pub timestamp: u64,
+    pub reference_id: Option<String>, // Content ID or task ID
+    pub points: u64,
 }
 
 // Constants

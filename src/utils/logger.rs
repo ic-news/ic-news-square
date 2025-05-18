@@ -1,6 +1,7 @@
 use std::cell::RefCell;
 use candid::{CandidType, Deserialize};
 use serde::Serialize;
+use ic_cdk::api::time;
 
 // Maximum number of log entries to keep
 const MAX_LOG_ENTRIES: usize = 1000;
@@ -25,7 +26,7 @@ pub fn log(message: &str) {
             buffer.remove(0);
         }
         buffer.push(LogEntry {
-            timestamp: ic_cdk::api::time() / 1_000_000, // Convert nanoseconds to milliseconds
+            timestamp: time() / 1_000_000, // Convert nanoseconds to milliseconds
             message: message.to_string(),
         });
     });

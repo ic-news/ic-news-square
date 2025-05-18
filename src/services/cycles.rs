@@ -1,6 +1,5 @@
 use candid::Principal;
-use ic_cdk::api::canister_balance;
-use ic_cdk::api::time;
+use ic_cdk::api::{canister_balance, time};
 use std::cell::RefCell;
 use std::collections::VecDeque;
 
@@ -9,6 +8,7 @@ use crate::models::error::SquareResult;
 
 use crate::auth;
 use crate::utils::error_handler::*;
+use crate::storage::STORAGE;
 
 // Constants
 const WARNING_THRESHOLD: u64 = 100_000_000_000;  // 100 billion cycles (0.1 ICP)
@@ -29,11 +29,9 @@ thread_local! {
         notification_enabled: true,
     });
     static CYCLES_NOTIFICATIONS: RefCell<Vec<CyclesWarningNotification>> = RefCell::new(Vec::new());
-    static NOTIFICATION_SETTINGS: RefCell<NotificationSettings> = RefCell::new(NotificationSettings {
-        enabled: false,
-        email: None,
-    });
+    static NOTIFICATION_SETTINGS: RefCell<bool> = RefCell::new(true);
     static LAST_NOTIFICATION_TIME: RefCell<u64> = RefCell::new(0);
+    static EMERGENCY_MODE: RefCell<bool> = RefCell::new(false);
 }
 
 // Initialize cycles monitoring
@@ -52,7 +50,7 @@ pub fn init_cycles_monitoring() {
 // Record daily cycles consumption
 pub fn record_cycles_consumption() {
     let current_balance = canister_balance();
-    let current_time = time();
+    let current_time = time() / 1_000_000;
     
     LAST_RECORDED_BALANCE.with(|last_balance| {
         let last = *last_balance.borrow();
@@ -265,8 +263,7 @@ pub fn acknowledge_notification(timestamp: u64, _caller: Principal) -> SquareRes
 }
 
 // Update notification settings
-pub fn update_notification_settings(email_enabled: Option<bool>, email_address: Option<String>, 
-                                   _notification_frequency_hours: Option<u64>, _caller: Principal) -> SquareResult<()> {
+pub fn update_notification_settings(enabled: Option<bool>, _caller: Principal) -> SquareResult<()> {
     const MODULE: &str = "services::cycles";
     const FUNCTION: &str = "update_notification_settings";
     
@@ -280,23 +277,17 @@ pub fn update_notification_settings(email_enabled: Option<bool>, email_address: 
         Ok(_) => {}
     }
     
-    NOTIFICATION_SETTINGS.with(|settings| {
-        let mut settings_mut = settings.borrow_mut();
-        
-        if let Some(enabled) = email_enabled {
-            settings_mut.enabled = enabled;
-        }
-        
-        if let Some(address) = email_address {
-            settings_mut.email = Some(address);
-        }
-    });
+    if let Some(notification_enabled) = enabled {
+        NOTIFICATION_SETTINGS.with(|settings| {
+            *settings.borrow_mut() = notification_enabled;
+        });
+    }
     
     Ok(())
 }
 
 // Get current notification settings
-pub fn get_notification_settings(_caller: Principal) -> SquareResult<NotificationSettings> {
+pub fn get_notification_settings(_caller: Principal) -> SquareResult<bool> {
     const MODULE: &str = "services::cycles";
     const FUNCTION: &str = "get_notification_settings";
     
@@ -311,7 +302,7 @@ pub fn get_notification_settings(_caller: Principal) -> SquareResult<Notificatio
     }
     
     NOTIFICATION_SETTINGS.with(|settings| {
-        Ok(settings.borrow().clone())
+        Ok(*settings.borrow())
     })
 }
 
@@ -320,14 +311,17 @@ pub fn get_notification_settings(_caller: Principal) -> SquareResult<Notificatio
 // Check if balance is below threshold and handle accordingly
 fn check_balance_threshold() {
     let current_balance = canister_balance();
-    let current_time = time();
+    
+    let notifications_enabled = NOTIFICATION_SETTINGS.with(|settings| {
+        *settings.borrow()
+    });
+    
+    if !notifications_enabled {
+        return;
+    }
     
     CYCLES_THRESHOLD_CONFIG.with(|config| {
         let config_ref = config.borrow();
-        
-        if !config_ref.notification_enabled {
-            return;
-        }
         
         // Check if we should create a notification based on thresholds
         if current_balance < config_ref.critical_threshold {
@@ -354,15 +348,23 @@ fn check_balance_threshold() {
             );
         }
         
-        // Check if we should send an email notification
-        should_send_email_notification(current_time);
+        // Check if we should send a Bark notification for critical balance
+        if current_balance <= config_ref.critical_threshold {
+            // Use the existing Bark notification function
+            ic_cdk::spawn(async {
+                match send_bark_notification().await {
+                    Ok(_) => ic_cdk::println!("Successfully sent Bark notification for critical cycles balance"),
+                    Err(e) => ic_cdk::println!("Failed to send Bark notification: {}", e)
+                }
+            });
+        }
     });
 }
 
 // Create a warning notification
 fn create_warning_notification(balance: u64, threshold: u64, severity: CyclesWarningSeverity, message: String) {
     let notification = CyclesWarningNotification {
-        timestamp: time(),
+        timestamp: time() / 1_000_000,
         balance,
         threshold,
         severity: severity.clone(),
@@ -390,46 +392,12 @@ fn create_warning_notification(balance: u64, threshold: u64, severity: CyclesWar
     });
 }
 
-// Check if we should send an email notification
-fn should_send_email_notification(current_time: u64) {
-    NOTIFICATION_SETTINGS.with(|settings| {
-        let settings_ref = settings.borrow();
-        
-        // If email notifications are not enabled, return
-        if !settings_ref.enabled || settings_ref.email.is_none() {
-            return;
-        }
-        
-        LAST_NOTIFICATION_TIME.with(|last_time| {
-            let last = *last_time.borrow();
-            // Default to 24 hours if not specified
-            let frequency_nanos = 24 * 3600_000_000_000;
-            
-            // Check if enough time has passed since the last notification
-            if current_time - last > frequency_nanos {
-                // Get unacknowledged critical notifications
-                let has_critical = CYCLES_NOTIFICATIONS.with(|notifications| {
-                    notifications.borrow().iter().any(|n| {
-                        !n.is_acknowledged && n.severity == CyclesWarningSeverity::Critical
-                    })
-                });
-                
-                if has_critical {
-                    // Send email notification (this is a placeholder - actual implementation would depend on your email service)
-                    send_email_notification(settings_ref.email.as_ref().unwrap());
-                    
-                    // Update last notification time
-                    *last_time.borrow_mut() = current_time;
-                }
-            }
-        });
-    });
-}
+
 
 use ic_cdk::api::management_canister::http_request::{HttpMethod, TransformArgs, TransformContext, http_request, CanisterHttpRequestArgument, HttpResponse};
 
 // Send notification using Bark service
-fn send_email_notification(message: &str) {
+fn send_bark_message(message: &str) {
     // Log the notification message
     ic_cdk::println!("Sending notification: {}", message);
     
@@ -451,8 +419,17 @@ fn send_email_notification(message: &str) {
 }
 
 async fn send_bark_notification() -> Result<(), String> {
-    // Bark API configuration
-    let api_key = "K8DaSYAVyVZMToSsL2DbFn";
+    // Get Bark API key from storage
+    let api_key = crate::storage::STORAGE.with(|storage| {
+        let storage = storage.borrow();
+        storage.bark_api_key.clone()
+    });
+    
+    // Check if API key is set
+    if api_key.is_empty() {
+        return Err("Bark API key is not configured".to_string());
+    }
+    
     let url = format!("https://api.day.app/{}", api_key);
     
     // Get current balance for notification content
@@ -521,7 +498,10 @@ fn transform_bark_response(args: TransformArgs) -> HttpResponse {
 // Send a custom notification message using Bark service
 async fn send_custom_bark_notification(message: &str) -> Result<(), String> {
     // Bark API configuration
-    let api_key = "K8DaSYAVyVZMToSsL2DbFn";
+    let api_key = crate::storage::STORAGE.with(|storage| {
+        let storage = storage.borrow();
+        storage.bark_api_key.clone()
+    });
     let url = format!("https://api.day.app/{}", api_key);
     
     // Build the request parameters for Bark API
@@ -592,21 +572,53 @@ fn url_encode(s: &str) -> String {
 // Emergency cycles conservation measures
 fn emergency_cycles_conservation() {
     // This function implements emergency measures to conserve cycles
-    // For example:
-    // 1. Disable non-essential features
-    // 2. Reduce update frequency of background tasks
-    // 3. Limit certain API calls to admins only
     
     // Log the emergency measures
-    let _current_balance = ic_cdk::api::canister_balance();
-    let _timestamp = ic_cdk::api::time() / 1_000_000; // Convert to seconds
+    let current_balance = canister_balance();
+    let timestamp = time() / 1_000_000; // Convert to seconds
     
-    // Simple implementation that focuses on logging the emergency
-    // In a real implementation, we would modify configuration settings
-    // to reduce cycles consumption
+    ic_cdk::println!(
+        "[EMERGENCY] Activating cycles conservation measures at timestamp: {}, current balance: {}", 
+        timestamp, 
+        current_balance
+    );
     
-    // Notify administrators via email (if supported)
-    send_email_notification("Emergency cycles conservation measures activated due to critically low cycles balance");
+    // 1. Reduce heartbeat interval to save cycles
+    STORAGE.with(|storage| {
+        let mut store = storage.borrow_mut();
+        // Double the interval to reduce frequency
+        store.heartbeat_interval_hours = store.heartbeat_interval_hours.saturating_mul(2);
+        ic_cdk::println!("[EMERGENCY] Heartbeat interval increased to {} hours", store.heartbeat_interval_hours);
+    });
+    
+    // 2. Disable trending content updates which consume cycles
+    crate::storage::STORAGE.with(|storage| {
+        let mut storage = storage.borrow_mut();
+        // Clear trending content to avoid processing
+        storage.trending_content.clear();
+        ic_cdk::println!("[EMERGENCY] Cleared trending content cache to save processing cycles");
+    });
+    
+    // 3. Set a flag to limit certain operations in other parts of the code
+    // We can use a global static to indicate emergency mode
+    EMERGENCY_MODE.with(|mode| {
+        *mode.borrow_mut() = true;
+        ic_cdk::println!("[EMERGENCY] Emergency mode activated - non-essential features disabled");
+    });
+    
+    // 4. Update cycles threshold to be more conservative
+    STORAGE.with(|storage| {
+        let mut store = storage.borrow_mut();
+        // Increase heartbeat interval to reduce canister activity
+        if store.heartbeat_interval_hours < 24 {
+            store.heartbeat_interval_hours = store.heartbeat_interval_hours.saturating_mul(2);
+            ic_cdk::println!("[EMERGENCY] Heartbeat interval increased to {} hours", store.heartbeat_interval_hours);
+        }
+    });
+    
+    // Notify administrators
+    let message = format!("Emergency cycles conservation measures activated: increased heartbeat interval, disabled trending updates, and limited non-essential features. Current balance: {}", current_balance);
+    send_bark_message(&message);
 }
 
 // Get average daily consumption

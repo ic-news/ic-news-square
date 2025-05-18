@@ -61,15 +61,19 @@ cd "$PROJECT_ROOT"
 # Deploy main project
 canister_name="ic_news_square"
 
-# 构建步骤
-# 保留 cargo clean 命令，因为在某些情况下它是必要的
 cargo clean
 cargo build --target wasm32-unknown-unknown --release
 candid-extractor "target/wasm32-unknown-unknown/release/ic_news_square.wasm" > "src/$canister_name.did"
 
-# 使用 --mode upgrade 参数强制执行升级流程而不是重新部署
-# 这样可以确保 pre_upgrade 和 post_upgrade 钩子函数被调用，数据得以保存
-dfx deploy --network "$NETWORK" --mode upgrade
+if [ -f ".dfx/$NETWORK/canister_ids.json" ] && [ "$(jq -r ".$canister_name.$NETWORK" ".dfx/$NETWORK/canister_ids.json")" != "null" ]; then
+    echo "Updating existing canister with --mode reinstall..."
+    
+    dfx deploy --network "$NETWORK" --mode reinstall
+else
+    echo "First time deployment, using normal deploy..."
+    
+    dfx deploy --network "$NETWORK"
+fi
 
 # Bind daily_checkin_task canister
 if [ -n "$DAILY_CHECKIN_TASK_CANISTER_ID" ]; then

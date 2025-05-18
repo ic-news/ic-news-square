@@ -1,16 +1,8 @@
 use candid::{CandidType, Deserialize, Principal};
-use crate::storage::{ContentStatus, ContentVisibility, ParentType};
-
-// News reference for referencing news in posts
-#[derive(CandidType, Deserialize, Clone)]
-pub struct NewsReferenceRequest {
-    pub metadata: Vec<(String, String)>,
-    pub canister_id: Principal,
-}
 
 // News reference response for returning news references in responses
 #[derive(CandidType, Deserialize, Clone, Debug)]
-pub struct NewsReferenceResponse {
+pub struct NewsReference {
     pub metadata: Vec<(String, String)>,
     pub canister_id: Principal,
 }
@@ -25,7 +17,7 @@ pub struct CreatePostRequest {
     pub tags: Option<Vec<String>>,  // Max 5 tags
     pub is_nsfw: Option<bool>,
     pub visibility: Option<ContentVisibility>,
-    pub news_reference: Option<NewsReferenceRequest>,  // Optional reference to news
+    pub news_reference: Option<NewsReference>,  // Optional reference to news
 }
 
 #[derive(CandidType, Deserialize, Clone)]
@@ -45,13 +37,30 @@ pub struct UpdatePostRequest {
     pub token_mentions: Option<Vec<String>>,
     pub tags: Option<Vec<String>>,  // Max 5 tags
     pub visibility: Option<ContentVisibility>,
-    pub news_reference: Option<NewsReferenceRequest>,  // Optional reference to news
+    pub news_reference: Option<NewsReference>,  // Optional reference to news
 }
 
 #[derive(CandidType, Deserialize, Clone)]
 pub struct UpdateCommentRequest {
     pub id: String,
     pub content: String,
+}
+
+// Content types
+#[derive(CandidType, Deserialize, Clone)]
+pub struct Post {
+    pub id: String,
+    pub author: Principal,
+    pub content: String,
+    pub media_urls: Vec<String>,
+    pub hashtags: Vec<String>,
+    pub token_mentions: Vec<String>,
+    pub tags: Vec<String>,  // Max 5 tags
+    pub created_at: u64,
+    pub updated_at: u64,
+    pub status: ContentStatus,
+    pub visibility: ContentVisibility,
+    pub news_reference: Option<NewsReference>,
 }
 
 // Response DTOs
@@ -71,7 +80,21 @@ pub struct PostResponse {
     pub likes_count: u64,
     pub comments_count: u64,
     pub author_info: crate::models::user::UserSocialResponse,
-    pub news_reference: Option<NewsReferenceResponse>,
+    pub news_reference: Option<NewsReference>,
+}
+
+#[derive(CandidType, Deserialize, Clone)]
+pub struct Comment {
+    pub id: String,
+    pub author: Principal,
+    pub content: String,
+    pub parent_id: String, // ID of the post or comment this is replying to
+    pub parent_type: ParentType,
+    pub created_at: u64,
+    pub updated_at: u64,
+    pub status: ContentStatus,
+    pub child_comments: Vec<String>, // IDs of child comments
+    pub likes_count: u64,
 }
 
 #[derive(CandidType, Deserialize, Clone, Debug)]
@@ -90,6 +113,27 @@ pub struct CommentResponse {
     pub child_comments: Vec<Box<CommentResponse>>,
     pub author_info: crate::models::user::UserSocialResponse,
     pub is_liked: bool,
+}
+
+impl From<Comment> for CommentResponse {
+    fn from(comment: Comment) -> Self {
+        CommentResponse {
+            id: comment.id,
+            author: comment.author,
+            content: comment.content,
+            parent_id: comment.parent_id,
+            parent_type: comment.parent_type,
+            created_at: comment.created_at,
+            updated_at: comment.updated_at,
+            status: comment.status,
+            likes_count: comment.likes_count,
+            comments_count: comment.child_comments.len() as u64,
+            visibility: ContentVisibility::Public, // Default to public
+            child_comments: Vec::new(), // Child comments need to be populated separately
+            author_info: crate::models::user::UserSocialResponse::default(), // Need to be populated separately
+            is_liked: false, // Need to be populated separately
+        }
+    }
 }
 
 #[derive(CandidType, Deserialize, Clone)]
@@ -119,8 +163,8 @@ pub struct ContentFilter {
 
 #[derive(CandidType, Deserialize, Clone)]
 pub struct PaginationParams {
-    pub offset: usize,
-    pub limit: usize,
+    pub limit: Option<usize>,
+    pub offset: Option<usize>,
 }
 
 // Content moderation
@@ -132,6 +176,28 @@ pub struct ContentModerationRequest {
     pub reason: String,
 }
 
+#[derive(CandidType, Deserialize, Clone, PartialEq, Debug)]
+pub enum ContentStatus {
+    Active,
+    UnderReview,
+    Removed,
+    Hidden,
+    Deleted,
+}
+
+#[derive(CandidType, Deserialize, Clone, PartialEq, Debug)]
+pub enum ContentVisibility {
+    Public,
+    FollowersOnly,
+    Private,
+}
+
+#[derive(CandidType, Deserialize, Clone, PartialEq, Copy, Debug)]
+pub enum ParentType {
+    Post,
+    Comment,
+}
+
 // Alias for ModerateContentRequest to match the API function name
 pub type ModerateContentRequest = ContentModerationRequest;
 
@@ -140,6 +206,15 @@ pub enum ContentType {
     Post,
     Comment,
 }
+
+// Enums
+#[derive(CandidType, Deserialize, Clone, PartialEq)]
+pub enum MarketSentiment {
+    Bullish,
+    Bearish,
+    Neutral,
+}
+
 
 // Content constants
 pub const MAX_POST_LENGTH: usize = 2100;
